@@ -1,6 +1,6 @@
 {
   "name": "open-obsidian-sync",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Open-source Obsidian vault sync companion powered by rclone.",
   "main": "dist/main/main.js",
   "author": "Open Obsidian Sync contributors",
