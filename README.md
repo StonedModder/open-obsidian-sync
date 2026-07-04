@@ -41,6 +41,10 @@
   <a href="https://github.com/StonedModder/open-obsidian-sync/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/StonedModder/open-obsidian-sync/total?style=for-the-badge&color=7c3aed&label=total%20downloads"></a>
 </p>
 
+<p align="center">
+  <a href="https://x.com/StonedModder"><img alt="Follow on X" src="https://img.shields.io/badge/Follow%20me%20on%20X-@StonedModder-000000?style=for-the-badge&logo=x&logoColor=white"></a>
+</p>
+
 > **Not affiliated with Obsidian.md or Dynalist Inc.** This is a community project. Obsidian and its logo are trademarks of Dynalist Inc.
 
 <br>
