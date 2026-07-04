@@ -47,7 +47,7 @@
 
 <!-- SCREENSHOT -->
 <p align="center">
-  <img src="assets/screenshot-dashboard.svg" alt="Open Obsidian Sync dashboard" width="900">
+  <img src="assets/screenshot-dashboard.png" alt="Open Obsidian Sync dashboard" width="900">
 </p>
 
 <br>
