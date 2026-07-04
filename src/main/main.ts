@@ -14,6 +14,7 @@ import {
   launchRcloneConfig,
   normalizeRemotePath,
   obscureArgs,
+  parseProviders,
   remoteTarget,
   runRclone,
   writeFiltersFile
@@ -32,6 +33,7 @@ import {
   type CreateCryptInput,
   type CreateRemoteInput,
   type LogLevel,
+  type ProviderInfo,
   type ScanResult,
   type VaultConfig
 } from "../shared/types";
@@ -708,6 +710,18 @@ const captureRclone = async (args: string[]): Promise<string> => {
   return result.output.trim() || chunks.join("").trim();
 };
 
+// Cached: the provider catalogue is static for a given rclone binary.
+let providersCache: ProviderInfo[] | undefined;
+
+ipcMain.handle("rclone:list-providers", async (): Promise<ApiResult<ProviderInfo[]>> => {
+  try {
+    if (!providersCache) providersCache = parseProviders(await captureRclone(["config", "providers"]));
+    return { ok: true, value: providersCache };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
 ipcMain.handle("rclone:create-remote", async (_event, input: CreateRemoteInput): Promise<ApiResult<string>> => {
   try {
     if (!input.name.trim() || !input.type.trim()) return { ok: false, error: "Remote name and type are required." };
@@ -718,7 +732,7 @@ ipcMain.handle("rclone:create-remote", async (_event, input: CreateRemoteInput):
       if (options[key]) options[key] = await captureRclone(obscureArgs(options[key]));
     }
     log("info", `Creating remote "${name}" (${input.type}). A browser may open to authorize.`);
-    const result = await runRcloneCommand(buildCreateRemoteArgs(name, input.type.trim(), options));
+    const result = await runRcloneCommand(buildCreateRemoteArgs(name, input.type.trim(), options, input.oauth));
     if (result.code !== 0) return { ok: false, error: result.output.trim() || "rclone could not create the remote." };
     log("success", `Remote "${name}" created`);
     sendState();

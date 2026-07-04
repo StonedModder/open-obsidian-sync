@@ -59,6 +59,28 @@ export interface CreateRemoteInput {
   options?: Record<string, string>;
   // Option keys whose values must be rclone-obscured before storing (e.g. passwords).
   obscureKeys?: string[];
+  // True when the backend authorizes via browser OAuth (rclone opens it if no token given).
+  oauth?: boolean;
+}
+
+// One configurable option of an rclone backend, from `rclone config providers`.
+export interface ProviderOptionInfo {
+  name: string;
+  help: string;
+  required: boolean;
+  isPassword: boolean;
+  sensitive: boolean;
+  advanced: boolean;
+  defaultStr: string;
+  exclusive: boolean;
+  examples: string[];
+}
+
+export interface ProviderInfo {
+  name: string;
+  description: string;
+  oauth: boolean;
+  options: ProviderOptionInfo[];
 }
 
 // A folder found during a scan that looks like an Obsidian vault (has .obsidian/).

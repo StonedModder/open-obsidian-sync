@@ -106,7 +106,7 @@ Then, inside the app:
 The left **Cloud setup** panel has three tabs — this is all you need:
 
 ### `Remotes`
-Pick a provider, name it, click **Create remote**. For Google Drive / Dropbox / OneDrive, your browser opens to sign in and rclone stores the token for you. Existing remotes show as chips you can delete with one click.
+Pick a provider, name it, click **Create remote**. For Google Drive / Dropbox / OneDrive, your browser opens to sign in and rclone stores the token for you. **Every rclone backend is available** — the "All rclone providers" list is generated live from rclone's own catalogue, so each backend gets its correct credential fields (passwords stored obscured), with help tooltips pulled from rclone's docs. Existing remotes show as chips you can delete with one click.
 
 ### `Encrypt`
 Set an **rclone config password** so your saved cloud tokens are encrypted on disk. The app keeps it in your OS secure storage ([Electron `safeStorage`](https://www.electronjs.org/docs/latest/api/safe-storage)) and unlocks rclone automatically in the background.

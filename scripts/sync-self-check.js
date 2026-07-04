@@ -11,6 +11,7 @@ const {
   defaultSelectiveSync,
   filterLinesForVault,
   obscureArgs,
+  parseProviders,
   remoteTarget,
   selectiveSyncExcludePatterns,
   withRcloneConfig
@@ -122,5 +123,45 @@ assert.equal(rcloneAssetName("linux", "x64"), "rclone-current-linux-amd64.zip");
 assert.equal(rcloneDownloadUrl("linux", "x64"), "https://downloads.rclone.org/rclone-current-linux-amd64.zip");
 assert.equal(rcloneBinaryName("win32"), "rclone.exe");
 assert.equal(rcloneBinaryName("linux"), "rclone");
+
+// Explicit oauth flag overrides the built-in backend set.
+assert(!buildCreateRemoteArgs("m", "mega", {}, true).includes("--non-interactive"));
+assert(buildCreateRemoteArgs("m", "mega", {}, false).includes("--non-interactive"));
+assert(buildCreateRemoteArgs("m", "mega", {}).includes("--non-interactive")); // unknown backend defaults non-interactive
+assert(!buildCreateRemoteArgs("g", "drive", {}).includes("--non-interactive")); // known oauth backend
+
+// parseProviders maps rclone's `config providers` JSON to the UI shape.
+const providers = parseProviders(
+  JSON.stringify([
+    {
+      Name: "mega",
+      Description: "Mega",
+      Options: [
+        { Name: "user", Help: "User name.", Required: true, IsPassword: false, Advanced: false, DefaultStr: "", Examples: null },
+        { Name: "pass", Help: "Password.", Required: true, IsPassword: true, Advanced: false, DefaultStr: "" },
+        { Name: "debug", Help: "Debug.", Advanced: true, DefaultStr: "false" },
+        { Name: "hidden", Help: "Hidden.", Hide: 1 }
+      ]
+    },
+    {
+      Name: "box",
+      Description: "Box",
+      Options: [
+        { Name: "token", Help: "OAuth Access Token as a JSON blob.", Advanced: false },
+        { Name: "box_sub_type", Help: "Sub type.", Advanced: false, Exclusive: true, Examples: [{ Value: "user" }, { Value: "enterprise" }], DefaultStr: "user" }
+      ]
+    }
+  ])
+);
+assert.equal(providers.length, 2);
+const mega = providers.find((p) => p.name === "mega");
+assert.equal(mega.oauth, false);
+assert.equal(mega.options.length, 3); // hidden filtered out
+assert.equal(mega.options.find((o) => o.name === "pass").isPassword, true);
+assert.equal(mega.options.find((o) => o.name === "debug").advanced, true);
+const box = providers.find((p) => p.name === "box");
+assert.equal(box.oauth, true);
+assert.deepEqual(box.options.find((o) => o.name === "box_sub_type").examples, ["user", "enterprise"]);
+assert.equal(box.options.find((o) => o.name === "box_sub_type").exclusive, true);
 
 console.log("sync self-check passed");

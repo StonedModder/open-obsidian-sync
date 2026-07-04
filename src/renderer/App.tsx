@@ -37,6 +37,7 @@ import {
   type AppState,
   type ConflictStrategy,
   type Provider,
+  type ProviderInfo,
   type ScanResult,
   type SelectiveSyncSettings,
   type VaultConfig
@@ -659,9 +660,10 @@ const remoteKinds: RemoteKind[] = [
       { key: "endpoint", label: "Endpoint", tip: "Custom S3 endpoint URL. Required for non-AWS providers like Wasabi or R2.", optional: true, placeholder: "s3.wasabisys.com" }
     ]
   },
-  { type: "crypt", label: "Encrypted (crypt)", kind: "crypt", note: "Wraps an existing remote so files are encrypted before upload." },
-  { type: "custom", label: "Other rclone type…", kind: "custom", note: "For providers not listed here. Create the remote, then finish any extra fields via Advanced CLI." }
+  { type: "crypt", label: "Encrypted (crypt)", kind: "crypt", note: "Wraps an existing remote so files are encrypted before upload." }
 ];
+
+const curatedTypes = new Set(remoteKinds.map((option) => option.type));
 
 function SectionHead({ icon, title, note }: { icon: JSX.Element; title: string; note: string }) {
   return (
@@ -794,11 +796,12 @@ function CreateRemote({
   onCreated?: (name: string) => void;
 }) {
   const [type, setType] = useState("drive");
-  const [customType, setCustomType] = useState("");
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [remotes, setRemotes] = useState<string[]>([]);
+  const [allProviders, setAllProviders] = useState<ProviderInfo[]>([]);
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
+  const [showOptional, setShowOptional] = useState(false);
   // crypt-only state
   const [baseRemote, setBaseRemote] = useState("");
   const [basePath, setBasePath] = useState("Obsidian");
@@ -806,24 +809,49 @@ function CreateRemote({
   const [pw2, setPw2] = useState("");
 
   const nameEdited = useRef(false);
-  const kind = remoteKinds.find((option) => option.type === type)!;
+  // "dyn:<backend>" selects a provider from rclone's full catalogue.
+  const dynamic = type.startsWith("dyn:") ? allProviders.find((provider) => provider.name === type.slice(4)) : undefined;
+  const kind = dynamic ? undefined : remoteKinds.find((option) => option.type === type);
 
   const refresh = async () => {
     const result = await window.openObsidianSync.listRcloneRemotes();
     if (result.ok) setRemotes(result.value ?? []);
   };
 
+  const loadProviders = async () => {
+    const result = await window.openObsidianSync.listProviders();
+    if (result.ok && result.value) setAllProviders(result.value);
+  };
+
   useEffect(() => {
     void refresh();
+    void loadProviders();
   }, []);
 
   // Suggest a sensible default remote name per provider, until the user edits it.
   useEffect(() => {
     setFieldValues({});
+    setShowOptional(false);
     if (nameEdited.current) return;
-    const suggested = type === "custom" ? "" : type === "protondrive" ? "proton" : type === "s3" ? "s3" : type === "onedrive" ? "onedrive" : type === "dropbox" ? "dropbox" : type === "crypt" ? "encrypted" : "gdrive";
+    const suggested = type.startsWith("dyn:")
+      ? type.slice(4).replace(/[^a-zA-Z0-9_-]/g, "")
+      : type === "protondrive"
+        ? "proton"
+        : type === "s3"
+          ? "s3"
+          : type === "onedrive"
+            ? "onedrive"
+            : type === "dropbox"
+              ? "dropbox"
+              : type === "crypt"
+                ? "encrypted"
+                : "gdrive";
     setName(suggested);
   }, [type]);
+
+  const dynamicFields = dynamic ? dynamic.options.filter((option) => !option.advanced && option.name !== "token") : [];
+  const dynamicRequired = dynamicFields.filter((option) => option.required);
+  const dynamicOptional = dynamicFields.filter((option) => !option.required);
 
   const setField = (key: string, value: string) => setFieldValues((current) => ({ ...current, [key]: value }));
 
@@ -837,7 +865,7 @@ function CreateRemote({
     if (!name.trim()) return setNotice("Enter a name for this remote.");
     setBusy(true);
     try {
-      if (kind.kind === "crypt") {
+      if (kind?.kind === "crypt") {
         if (!baseRemote || !pw) return setNotice("Encrypted remote needs a base remote and a password.");
         const result = await window.openObsidianSync.createCryptRemote({ name, baseRemote, basePath, password: pw, password2: pw2 || undefined });
         if (result.ok && result.value) {
@@ -848,15 +876,15 @@ function CreateRemote({
         return;
       }
 
-      if (kind.kind === "oauth") {
+      if (kind?.kind === "oauth") {
         setNotice(`Opening your browser to sign in to ${kind.label}…`, "info");
-        const result = await window.openObsidianSync.createRemote({ name, type: kind.type });
+        const result = await window.openObsidianSync.createRemote({ name, type: kind.type, oauth: true });
         if (result.ok && result.value) done(result.value);
         else setNotice(result.error);
         return;
       }
 
-      if (kind.kind === "fields") {
+      if (kind?.kind === "fields") {
         const missing = (kind.fields ?? []).filter((field) => !field.optional && !fieldValues[field.key]?.trim());
         if (missing.length) return setNotice(`Fill in: ${missing.map((field) => field.label).join(", ")}.`);
         const options: Record<string, string> = {};
@@ -871,12 +899,23 @@ function CreateRemote({
         return;
       }
 
-      // custom
-      const realType = customType.trim();
-      if (!realType) return setNotice("Enter the rclone backend type (e.g. b2, pcloud, sftp).");
-      const result = await window.openObsidianSync.createRemote({ name, type: realType });
-      if (result.ok && result.value) done(result.value);
-      else setNotice(result.error);
+      if (dynamic) {
+        const missing = dynamicRequired.filter((option) => !fieldValues[option.name]?.trim());
+        if (missing.length) return setNotice(`Fill in: ${missing.map((option) => option.name).join(", ")}.`);
+        const options: Record<string, string> = {};
+        for (const option of dynamicFields) {
+          const value = fieldValues[option.name]?.trim();
+          if (value) options[option.name] = value;
+        }
+        const obscureKeys = dynamicFields.filter((option) => option.isPassword && options[option.name]).map((option) => option.name);
+        if (dynamic.oauth) setNotice(`Opening your browser to sign in to ${dynamic.description}…`, "info");
+        const result = await window.openObsidianSync.createRemote({ name, type: dynamic.name, options, obscureKeys, oauth: dynamic.oauth });
+        if (result.ok && result.value) done(result.value);
+        else setNotice(result.error);
+        return;
+      }
+
+      setNotice("Pick a provider first.");
     } finally {
       setBusy(false);
     }
@@ -887,15 +926,35 @@ function CreateRemote({
       <label className="label text-[12px]">
         <FieldLabel label="Provider" tip="Choose your cloud storage provider. Google Drive, Dropbox and OneDrive sign in through your browser; others ask for credentials here." />
         <select className="field h-9" value={type} onChange={(event) => setType(event.target.value)}>
-          {remoteKinds.map((option) => (
-            <option key={option.type} value={option.type}>
-              {option.label}
-            </option>
-          ))}
+          <optgroup label="Popular">
+            {remoteKinds.map((option) => (
+              <option key={option.type} value={option.type}>
+                {option.label}
+              </option>
+            ))}
+          </optgroup>
+          {allProviders.length > 0 && (
+            <optgroup label={`All rclone providers (${allProviders.filter((provider) => !curatedTypes.has(provider.name)).length})`}>
+              {allProviders
+                .filter((provider) => !curatedTypes.has(provider.name))
+                .map((provider) => (
+                  <option key={provider.name} value={`dyn:${provider.name}`}>
+                    {provider.description}
+                  </option>
+                ))}
+            </optgroup>
+          )}
         </select>
       </label>
 
-      {kind.note && <p className="text-[11px] leading-5 text-[var(--muted)]">{kind.note}</p>}
+      {kind?.note && <p className="text-[11px] leading-5 text-[var(--muted)]">{kind.note}</p>}
+      {dynamic && (
+        <p className="text-[11px] leading-5 text-[var(--muted)]">
+          {dynamic.oauth
+            ? `${dynamic.description} authorizes through your browser — fill any extra fields, then connect.`
+            : `${dynamic.description}. Fields below come straight from rclone's own definition of this backend.`}
+        </p>
+      )}
 
       <label className="label text-[12px]">
         <FieldLabel label="Remote name" tip="A short nickname for this connection (letters, numbers, - and _). You'll pick it when adding a vault." />
@@ -910,14 +969,7 @@ function CreateRemote({
         />
       </label>
 
-      {kind.kind === "custom" && (
-        <label className="label text-[12px]">
-          <FieldLabel label="rclone backend type" tip="The rclone backend identifier, e.g. b2, pcloud, sftp, mega. See rclone.org/overview for the full list." />
-          <input className="field mono h-9 text-[12px]" placeholder="b2, pcloud, sftp…" value={customType} onChange={(event) => setCustomType(event.target.value)} />
-        </label>
-      )}
-
-      {kind.kind === "fields" &&
+      {kind?.kind === "fields" &&
         (kind.fields ?? []).map((field) => (
           <label key={field.key} className="label text-[12px]">
             <FieldLabel label={field.optional ? `${field.label} (optional)` : field.label} tip={field.tip} />
@@ -931,7 +983,24 @@ function CreateRemote({
           </label>
         ))}
 
-      {kind.kind === "crypt" && (
+      {dynamic && (
+        <>
+          {dynamicRequired.map((option) => (
+            <DynField key={option.name} option={option} value={fieldValues[option.name] ?? ""} onChange={(value) => setField(option.name, value)} />
+          ))}
+          {dynamicOptional.length > 0 && (
+            <button className="btn h-8 w-full text-[10.5px]" onClick={() => setShowOptional((value) => !value)}>
+              {showOptional ? "Hide" : "Show"} {dynamicOptional.length} optional field{dynamicOptional.length === 1 ? "" : "s"}
+            </button>
+          )}
+          {showOptional &&
+            dynamicOptional.map((option) => (
+              <DynField key={option.name} option={option} optional value={fieldValues[option.name] ?? ""} onChange={(value) => setField(option.name, value)} />
+            ))}
+        </>
+      )}
+
+      {kind?.kind === "crypt" && (
         <>
           <label className="label text-[12px]">
             <FieldLabel label="Base remote" tip="An existing remote (created above) that the encrypted data is stored on. Create a normal remote first if the list is empty." />
@@ -961,8 +1030,12 @@ function CreateRemote({
       )}
 
       <button className="btn-ember h-9 w-full" disabled={busy} onClick={() => void create()}>
-        {kind.kind === "crypt" ? <Lock className="h-3.5 w-3.5" /> : <PlusCircle className="h-3.5 w-3.5" />}
-        {busy ? "Working…" : kind.kind === "crypt" ? "Create encrypted remote" : `Connect ${kind.label.split(" / ")[0]}`}
+        {kind?.kind === "crypt" ? <Lock className="h-3.5 w-3.5" /> : <PlusCircle className="h-3.5 w-3.5" />}
+        {busy
+          ? "Working…"
+          : kind?.kind === "crypt"
+            ? "Create encrypted remote"
+            : `Connect ${dynamic ? dynamic.description : (kind?.label ?? "").split(" / ")[0]}`}
       </button>
 
       {remotes.length > 0 && (
@@ -988,6 +1061,46 @@ function CreateRemote({
         </div>
       )}
     </div>
+  );
+}
+
+// One input generated from an rclone backend option definition: password masking
+// for secrets, a dropdown when rclone declares fixed choices, help text as tooltip.
+function DynField({
+  option,
+  optional,
+  value,
+  onChange
+}: {
+  option: ProviderInfo["options"][number];
+  optional?: boolean;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const label = optional ? `${option.name} (optional)` : option.name;
+  const tip = option.help || `rclone option "${option.name}" for this backend.`;
+  return (
+    <label className="label text-[12px]">
+      <FieldLabel label={label} tip={tip} />
+      {option.exclusive && option.examples.length > 0 ? (
+        <select className="field h-9" value={value} onChange={(event) => onChange(event.target.value)}>
+          <option value="">{option.defaultStr ? `default (${option.defaultStr})` : "choose…"}</option>
+          {option.examples.map((example) => (
+            <option key={example} value={example}>
+              {example}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          className="field h-9 text-[12px]"
+          type={option.isPassword || option.sensitive ? "password" : "text"}
+          placeholder={option.defaultStr || option.examples[0] || ""}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      )}
+    </label>
   );
 }
 

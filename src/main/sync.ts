@@ -1,7 +1,13 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { defaultConflictStrategy, type ConflictStrategy, type SelectiveSyncSettings, type VaultConfig } from "../shared/types";
+import {
+  defaultConflictStrategy,
+  type ConflictStrategy,
+  type ProviderInfo,
+  type SelectiveSyncSettings,
+  type VaultConfig
+} from "../shared/types";
 
 export interface SyncRunOptions {
   resync?: boolean;
@@ -153,12 +159,44 @@ export const runRclone = (
 // browser itself when no token is supplied, so we do NOT pass --non-interactive for those.
 const oauthBackends = new Set(["drive", "dropbox", "onedrive", "box", "pcloud", "yandex", "hidrive"]);
 
-export const buildCreateRemoteArgs = (name: string, type: string, options: Record<string, string> = {}): string[] => {
+export const buildCreateRemoteArgs = (name: string, type: string, options: Record<string, string> = {}, oauth?: boolean): string[] => {
   const kv = Object.entries(options).flatMap(([key, value]) => [`${key}=${value}`]);
   const args = ["config", "create", name, type, ...kv];
-  if (!oauthBackends.has(type)) args.push("--non-interactive");
+  const interactive = oauth ?? oauthBackends.has(type);
+  if (!interactive) args.push("--non-interactive");
   return args;
 };
+
+// Parse `rclone config providers` JSON into the shape the UI's dynamic form needs.
+// Pure and DOM-free so the self-check can cover it.
+export const parseProviders = (jsonText: string): ProviderInfo[] =>
+  (JSON.parse(jsonText) as Array<Record<string, unknown>>)
+    .map((provider) => {
+      const rawOptions = Array.isArray(provider.Options) ? (provider.Options as Array<Record<string, unknown>>) : [];
+      return {
+        name: String(provider.Name ?? ""),
+        description: String(provider.Description ?? provider.Name ?? ""),
+        // OAuth backends carry a `token` option; creating them without one opens the browser.
+        oauth: rawOptions.some((option) => option.Name === "token" && /oauth/i.test(String(option.Help ?? ""))),
+        options: rawOptions
+          .filter((option) => !option.Hide)
+          .map((option) => ({
+            name: String(option.Name ?? ""),
+            help: String(option.Help ?? "").split("\n")[0],
+            required: option.Required === true,
+            isPassword: option.IsPassword === true,
+            sensitive: option.Sensitive === true,
+            advanced: option.Advanced === true,
+            defaultStr: String(option.DefaultStr ?? ""),
+            exclusive: option.Exclusive === true,
+            examples: Array.isArray(option.Examples)
+              ? (option.Examples as Array<Record<string, unknown>>).map((example) => String(example.Value ?? ""))
+              : []
+          }))
+      };
+    })
+    .filter((provider) => provider.name)
+    .sort((a, b) => a.description.localeCompare(b.description));
 
 export const buildDeleteRemoteArgs = (name: string): string[] => ["config", "delete", name];
 
