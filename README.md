@@ -36,6 +36,11 @@
   <img alt="No telemetry" src="https://img.shields.io/badge/telemetry-none-brightgreen?style=flat-square">
 </p>
 
+<p align="center">
+  <a href="https://github.com/StonedModder/open-obsidian-sync/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/StonedModder/open-obsidian-sync?include_prereleases&sort=semver&style=for-the-badge&color=8b5cf6&label=download"></a>
+  <a href="https://github.com/StonedModder/open-obsidian-sync/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/StonedModder/open-obsidian-sync/total?style=for-the-badge&color=7c3aed&label=total%20downloads"></a>
+</p>
+
 > **Not affiliated with Obsidian.md or Dynalist Inc.** This is a community project. Obsidian and its logo are trademarks of Dynalist Inc.
 
 <br>
@@ -58,7 +63,7 @@ Everything — connecting a cloud account, turning on encryption, backing up you
 ## 🚀 Quick Start
 
 ```bash
-git clone https://github.com/your-org/open-obsidian-sync.git
+git clone https://github.com/StonedModder/open-obsidian-sync.git
 cd open-obsidian-sync
 npm install
 npm start
