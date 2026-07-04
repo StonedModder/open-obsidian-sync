@@ -1,9 +1,23 @@
-import type { AddVaultInput, ApiResult, AppState, BackupInput, CreateCryptInput, CreateRemoteInput, VaultConfig } from "./types";
+import type {
+  AddScannedInput,
+  AddVaultInput,
+  ApiResult,
+  AppState,
+  BackupInput,
+  CreateCryptInput,
+  CreateRemoteInput,
+  ScanResult,
+  VaultConfig
+} from "./types";
 
 export interface OpenObsidianSyncApi {
   getState: () => Promise<AppState>;
   onState: (callback: (state: AppState) => void) => () => void;
   chooseVault: () => Promise<ApiResult<string>>;
+  scanFolder: () => Promise<ApiResult<ScanResult>>;
+  addScanned: (input: AddScannedInput) => Promise<ApiResult<number>>;
+  completeOnboarding: () => Promise<ApiResult>;
+  resetOnboarding: () => Promise<ApiResult>;
   addVault: (input: AddVaultInput) => Promise<ApiResult<VaultConfig>>;
   updateVault: (vault: VaultConfig) => Promise<ApiResult<VaultConfig>>;
   removeVault: (vaultId: string) => Promise<ApiResult>;

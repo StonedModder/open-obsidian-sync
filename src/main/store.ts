@@ -7,6 +7,7 @@ export interface StoreData {
   vaults: VaultConfig[];
   logs: ActivityEntry[];
   encryptedRcloneConfigPassword?: string;
+  onboardingComplete?: boolean;
 }
 
 const emptyStore = (): StoreData => ({
@@ -35,7 +36,8 @@ export class JsonStore {
     return {
       vaults: [...this.data.vaults],
       logs: [...this.data.logs],
-      encryptedRcloneConfigPassword: this.data.encryptedRcloneConfigPassword
+      encryptedRcloneConfigPassword: this.data.encryptedRcloneConfigPassword,
+      onboardingComplete: this.data.onboardingComplete
     };
   }
 
@@ -65,6 +67,11 @@ export class JsonStore {
     this.save();
   }
 
+  setOnboardingComplete(value: boolean): void {
+    this.data.onboardingComplete = value;
+    this.save();
+  }
+
   reload(): void {
     this.load();
   }
@@ -82,7 +89,8 @@ export class JsonStore {
         vaults: Array.isArray(parsed.vaults) ? parsed.vaults.map((vault) => normalizeVault(vault as VaultConfig)) : [],
         logs: Array.isArray(parsed.logs) ? parsed.logs : [],
         encryptedRcloneConfigPassword:
-          typeof parsed.encryptedRcloneConfigPassword === "string" ? parsed.encryptedRcloneConfigPassword : undefined
+          typeof parsed.encryptedRcloneConfigPassword === "string" ? parsed.encryptedRcloneConfigPassword : undefined,
+        onboardingComplete: parsed.onboardingComplete === true
       };
     } catch {
       this.data = emptyStore();

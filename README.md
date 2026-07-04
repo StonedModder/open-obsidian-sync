@@ -194,19 +194,27 @@ npm run build       # renderer + main
 
 <br>
 
-## 📂 Portable Mode
+## 📂 Where your data lives
 
-The Windows portable exe keeps its data next to the executable:
+Your settings are stored in the OS's stable per-user app-data folder, so **moving or updating the app never loses your vaults**:
+
+| OS | Location |
+|---|---|
+| Windows | `%APPDATA%\open-obsidian-sync` |
+| macOS | `~/Library/Application Support/open-obsidian-sync` |
+| Linux | `~/.config/open-obsidian-sync` |
 
 ```text
-open-obsidian-sync-data/
+<data folder>/
 ├── config.json          vaults + options
 ├── rclone/rclone.conf   your remotes (optionally password-encrypted)
 ├── bisync/              rclone bisync state
 └── filters/             generated selective-sync filters
 ```
 
-Set `OPEN_OBSIDIAN_SYNC_DATA_DIR` to relocate this folder for dev or custom installs.
+Upgrading from an older build that kept its data next to the `.exe`? Your settings are **migrated automatically** on first launch — nothing to re-set-up.
+
+Want a truly portable copy (data on a USB stick with the exe)? Set `OPEN_OBSIDIAN_SYNC_DATA_DIR` to any folder to override the default.
 
 <br>
 

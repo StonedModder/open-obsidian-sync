@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const { resolveDataPath } = require("../dist/main/paths");
+const { resolveDataPath, legacyDataDirs } = require("../dist/main/paths");
 const {
   buildBackupConfigArgs,
   buildBisyncArgs,
@@ -60,14 +60,23 @@ assert(!args.includes("--filter-from"));
 assert(args.includes("--ignore-case"));
 assert.deepEqual(withRcloneConfig(["listremotes"], "C:\\App\\rclone.conf"), ["--config", "C:\\App\\rclone.conf", "listremotes"]);
 
+// Portable exe now uses the stable per-OS userData dir, NOT a folder next to the exe.
 assert.deepEqual(
-  resolveDataPath({ appIsPackaged: true, userDataPath: "C:\\Users\\me\\AppData", env: { PORTABLE_EXECUTABLE_DIR: "D:\\SyncApp" } }),
-  { dataPath: "D:\\SyncApp\\open-obsidian-sync-data", portableMode: true }
+  resolveDataPath({ appIsPackaged: true, userDataPath: "C:\\Users\\me\\AppData\\oos", env: { PORTABLE_EXECUTABLE_DIR: "D:\\SyncApp" } }),
+  { dataPath: "C:\\Users\\me\\AppData\\oos", portableMode: false }
+);
+// Explicit override still wins (portable-on-a-stick / dev).
+assert.deepEqual(
+  resolveDataPath({ appIsPackaged: true, userDataPath: "C:\\x", env: { OPEN_OBSIDIAN_SYNC_DATA_DIR: "E:\\custom" } }),
+  { dataPath: "E:\\custom", portableMode: true }
 );
 assert.deepEqual(
   resolveDataPath({ appIsPackaged: false, userDataPath: "C:\\Users\\me\\AppData", env: {} }),
   { dataPath: "C:\\Users\\me\\AppData", portableMode: false }
 );
+// Legacy next-to-exe dir is listed for one-time migration.
+assert.deepEqual(legacyDataDirs({ PORTABLE_EXECUTABLE_DIR: "D:\\SyncApp" }), ["D:\\SyncApp\\open-obsidian-sync-data"]);
+assert.deepEqual(legacyDataDirs({}), []);
 
 // OAuth backend: no --non-interactive so rclone can open the browser.
 assert.deepEqual(buildCreateRemoteArgs("gdrive", "drive"), ["config", "create", "gdrive", "drive"]);

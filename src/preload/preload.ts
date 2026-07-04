@@ -1,6 +1,16 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { OpenObsidianSyncApi } from "../shared/bridge";
-import type { AddVaultInput, ApiResult, AppState, BackupInput, CreateCryptInput, CreateRemoteInput, VaultConfig } from "../shared/types";
+import type {
+  AddScannedInput,
+  AddVaultInput,
+  ApiResult,
+  AppState,
+  BackupInput,
+  CreateCryptInput,
+  CreateRemoteInput,
+  ScanResult,
+  VaultConfig
+} from "../shared/types";
 
 const api: OpenObsidianSyncApi = {
   getState: (): Promise<AppState> => ipcRenderer.invoke("app:get-state"),
@@ -10,6 +20,10 @@ const api: OpenObsidianSyncApi = {
     return () => ipcRenderer.removeListener("state:changed", listener);
   },
   chooseVault: (): Promise<ApiResult<string>> => ipcRenderer.invoke("vault:choose-folder"),
+  scanFolder: (): Promise<ApiResult<ScanResult>> => ipcRenderer.invoke("vault:scan-folder"),
+  addScanned: (input: AddScannedInput): Promise<ApiResult<number>> => ipcRenderer.invoke("vault:add-scanned", input),
+  completeOnboarding: (): Promise<ApiResult> => ipcRenderer.invoke("app:complete-onboarding"),
+  resetOnboarding: (): Promise<ApiResult> => ipcRenderer.invoke("app:reset-onboarding"),
   addVault: (input: AddVaultInput): Promise<ApiResult<VaultConfig>> => ipcRenderer.invoke("vault:add", input),
   updateVault: (vault: VaultConfig): Promise<ApiResult<VaultConfig>> => ipcRenderer.invoke("vault:update", vault),
   removeVault: (vaultId: string): Promise<ApiResult> => ipcRenderer.invoke("vault:remove", vaultId),

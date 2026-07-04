@@ -19,11 +19,12 @@ import {
   writeFiltersFile
 } from "./sync";
 import { ensureRclone, formatBytes, resolveExistingRclone } from "./rclone-install";
-import { resolveDataPath } from "./paths";
+import { legacyDataDirs, resolveDataPath } from "./paths";
 import { JsonStore } from "./store";
 import {
   defaultConflictStrategy,
   type ActivityEntry,
+  type AddScannedInput,
   type AddVaultInput,
   type ApiResult,
   type AppState,
@@ -31,6 +32,7 @@ import {
   type CreateCryptInput,
   type CreateRemoteInput,
   type LogLevel,
+  type ScanResult,
   type VaultConfig
 } from "../shared/types";
 
@@ -82,6 +84,7 @@ const state = (): AppState => ({
   rcloneInstalling,
   rcloneDownloadPercent,
   rcloneDownloadDetail,
+  onboardingComplete: store.snapshot.onboardingComplete === true,
   version: app.getVersion()
 });
 
@@ -125,6 +128,32 @@ const validateVaultPath = (localPath: string): string | undefined => {
   if (!fs.statSync(localPath).isDirectory()) return "Path is not a folder.";
   if (!fs.existsSync(path.join(localPath, ".obsidian"))) return "This folder is missing a .obsidian directory.";
   return undefined;
+};
+
+// Walk a base folder (depth-limited) collecting directories that contain a
+// .obsidian/ subfolder. Does not descend into a found vault or noise dirs.
+const scanForVaults = (baseDir: string, maxDepth = 4): string[] => {
+  const found: string[] = [];
+  const walk = (dir: string, depth: number) => {
+    if (depth > maxDepth) return;
+    if (fs.existsSync(path.join(dir, ".obsidian"))) {
+      found.push(dir);
+      return; // don't recurse into a vault
+    }
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+      walk(path.join(dir, entry.name), depth + 1);
+    }
+  };
+  walk(baseDir, 0);
+  return found;
 };
 
 const countVaultFiles = (localPath: string) => {
@@ -177,7 +206,15 @@ const createWindow = () => {
   if (process.env.OPEN_OBSIDIAN_SYNC_SMOKE) {
     mainWindow.webContents.on("did-finish-load", () => {
       const delay = Number(process.env.OPEN_OBSIDIAN_SYNC_SHOT_DELAY ?? 2000);
-      setTimeout(() => {
+      setTimeout(async () => {
+        if (process.env.OPEN_OBSIDIAN_SYNC_EVAL && mainWindow) {
+          try {
+            await mainWindow.webContents.executeJavaScript(process.env.OPEN_OBSIDIAN_SYNC_EVAL);
+            await new Promise((resolve) => setTimeout(resolve, 500));
+          } catch (error) {
+            console.log(`SMOKE eval-error ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
         void mainWindow?.webContents
           .executeJavaScript("document.body.innerText.replace(/\\s+/g,' ').slice(0,400)")
           .then(async (text) => {
@@ -379,6 +416,29 @@ const setPaused = async (vaultId: string, paused: boolean): Promise<ApiResult> =
   return { ok: true };
 };
 
+// One-time move of a previous build's data (config + rclone conf + sync state)
+// into the new stable folder, so updating or moving the exe keeps every vault.
+// Returns the source it migrated from, or undefined if nothing to do.
+const migrateLegacyData = (target: string): string | undefined => {
+  if (fs.existsSync(path.join(target, "config.json"))) return undefined; // already have data
+
+  for (const legacy of legacyDataDirs(process.env)) {
+    if (path.resolve(legacy) === path.resolve(target)) continue;
+    if (!fs.existsSync(path.join(legacy, "config.json"))) continue;
+    try {
+      fs.mkdirSync(target, { recursive: true });
+      for (const entry of ["config.json", "rclone", "filters", "bisync"]) {
+        const src = path.join(legacy, entry);
+        if (fs.existsSync(src)) fs.cpSync(src, path.join(target, entry), { recursive: true });
+      }
+      return legacy;
+    } catch {
+      // try the next candidate
+    }
+  }
+  return undefined;
+};
+
 const installRclone = async (): Promise<ApiResult> => {
   if (rcloneInstalling) return { ok: false, error: "rclone setup already in progress." };
 
@@ -429,6 +489,7 @@ app.whenReady().then(() => {
   });
   dataPath = resolvedData.dataPath;
   portableMode = resolvedData.portableMode;
+  const migratedFrom = migrateLegacyData(dataPath);
   rcloneConfigPath = path.join(dataPath, "rclone", "rclone.conf");
   fs.mkdirSync(path.dirname(rcloneConfigPath), { recursive: true });
   store = new JsonStore(dataPath);
@@ -436,7 +497,8 @@ app.whenReady().then(() => {
   createWindow();
   createTray();
   startAllVaultServices();
-  log("info", "App started");
+  log("info", `App started · data: ${dataPath}`);
+  if (migratedFrom) log("success", `Migrated your existing settings from ${migratedFrom}`);
   // Auto-detect / download rclone so the user never has to install it by hand.
   void installRclone();
 
@@ -468,13 +530,29 @@ ipcMain.handle("vault:choose-folder", async (): Promise<ApiResult<string>> => {
   return error ? { ok: false, error } : { ok: true, value: selected };
 });
 
-ipcMain.handle("vault:add", (_event, input: AddVaultInput): ApiResult<VaultConfig> => {
-  const validationError = validateVaultPath(input.localPath);
-  if (validationError) return { ok: false, error: validationError };
-  if (!input.remote.trim()) return { ok: false, error: "Choose or enter an rclone remote." };
+ipcMain.handle("vault:scan-folder", async (): Promise<ApiResult<ScanResult>> => {
+  const result = await dialog.showOpenDialog(mainWindow!, {
+    properties: ["openDirectory"],
+    title: "Choose a folder to scan for Obsidian vaults"
+  });
+  if (result.canceled || result.filePaths.length === 0) return { ok: false, error: "No folder selected." };
 
+  const baseDir = result.filePaths[0];
+  const existing = new Set(store.snapshot.vaults.map((vault) => path.resolve(vault.localPath).toLowerCase()));
+  const candidates = scanForVaults(baseDir).map((vaultPath) => ({
+    path: vaultPath,
+    name: path.basename(vaultPath),
+    alreadyAdded: existing.has(path.resolve(vaultPath).toLowerCase())
+  }));
+
+  if (candidates.length === 0) return { ok: false, error: "No Obsidian vaults (folders with a .obsidian directory) found here." };
+  log("info", `Found ${candidates.length} vault(s) under ${baseDir}`);
+  return { ok: true, value: { baseDir, candidates } };
+});
+
+const buildVaultFromInput = (input: AddVaultInput): VaultConfig => {
   const timestamp = now();
-  const vault: VaultConfig = {
+  return {
     id: randomUUID(),
     name: input.name?.trim() || path.basename(input.localPath),
     localPath: input.localPath,
@@ -495,7 +573,60 @@ ipcMain.handle("vault:add", (_event, input: AddVaultInput): ApiResult<VaultConfi
     createdAt: timestamp,
     updatedAt: timestamp
   };
+};
 
+ipcMain.handle("vault:add-scanned", (_event, input: AddScannedInput): ApiResult<number> => {
+  if (!input.remote.trim()) return { ok: false, error: "Choose a remote for the scanned vaults." };
+  if (!input.paths.length) return { ok: false, error: "Select at least one vault to add." };
+
+  const existing = new Set(store.snapshot.vaults.map((vault) => path.resolve(vault.localPath).toLowerCase()));
+  const prefix = normalizeRemotePath(input.remotePathPrefix) || "Obsidian";
+  let added = 0;
+
+  for (const localPath of input.paths) {
+    if (validateVaultPath(localPath)) continue;
+    if (existing.has(path.resolve(localPath).toLowerCase())) continue;
+    const vault = buildVaultFromInput({
+      localPath,
+      provider: input.provider,
+      remote: input.remote,
+      remotePath: `${prefix}/${path.basename(localPath)}`,
+      includeObsidianConfig: input.includeObsidianConfig,
+      selectiveSync: input.selectiveSync,
+      conflictStrategy: input.conflictStrategy,
+      excludePatterns: input.excludePatterns,
+      syncIntervalMinutes: input.syncIntervalMinutes,
+      autoSync: input.autoSync
+    });
+    store.addVault(vault);
+    startVaultServices(vault.id);
+    added += 1;
+  }
+
+  refreshTrayMenu();
+  log("success", `Added ${added} vault(s) from scan`);
+  sendState();
+  return added > 0 ? { ok: true, value: added } : { ok: false, error: "No new vaults were added (already present or invalid)." };
+});
+
+ipcMain.handle("app:complete-onboarding", (): ApiResult => {
+  store.setOnboardingComplete(true);
+  sendState();
+  return { ok: true };
+});
+
+ipcMain.handle("app:reset-onboarding", (): ApiResult => {
+  store.setOnboardingComplete(false);
+  sendState();
+  return { ok: true };
+});
+
+ipcMain.handle("vault:add", (_event, input: AddVaultInput): ApiResult<VaultConfig> => {
+  const validationError = validateVaultPath(input.localPath);
+  if (validationError) return { ok: false, error: validationError };
+  if (!input.remote.trim()) return { ok: false, error: "Choose or enter an rclone remote." };
+
+  const vault = buildVaultFromInput(input);
   store.addVault(vault);
   startVaultServices(vault.id);
   refreshTrayMenu();
@@ -581,8 +712,13 @@ ipcMain.handle("rclone:create-remote", async (_event, input: CreateRemoteInput):
   try {
     if (!input.name.trim() || !input.type.trim()) return { ok: false, error: "Remote name and type are required." };
     const name = input.name.replace(/:$/, "").trim();
+    const options: Record<string, string> = { ...(input.options ?? {}) };
+    // rclone stores passwords obscured; obscure the requested keys before saving.
+    for (const key of input.obscureKeys ?? []) {
+      if (options[key]) options[key] = await captureRclone(obscureArgs(options[key]));
+    }
     log("info", `Creating remote "${name}" (${input.type}). A browser may open to authorize.`);
-    const result = await runRcloneCommand(buildCreateRemoteArgs(name, input.type.trim(), input.options ?? {}));
+    const result = await runRcloneCommand(buildCreateRemoteArgs(name, input.type.trim(), options));
     if (result.code !== 0) return { ok: false, error: result.output.trim() || "rclone could not create the remote." };
     log("success", `Remote "${name}" created`);
     sendState();

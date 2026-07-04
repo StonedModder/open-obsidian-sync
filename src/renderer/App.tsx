@@ -9,6 +9,8 @@ import {
   Database,
   FileStack,
   FolderOpen,
+  FolderSearch,
+  HelpCircle,
   Info,
   KeyRound,
   Lock,
@@ -18,6 +20,7 @@ import {
   PlusCircle,
   RefreshCw,
   Settings,
+  Sparkles,
   Terminal,
   Trash2,
   X
@@ -34,6 +37,7 @@ import {
   type AppState,
   type ConflictStrategy,
   type Provider,
+  type ScanResult,
   type SelectiveSyncSettings,
   type VaultConfig
 } from "../shared/types";
@@ -159,6 +163,28 @@ function Shimmer({ children, className, as }: { children: string; className?: st
   );
 }
 
+// Hover/focus tooltip for a settings label. Keyboard-accessible via tabIndex.
+function Tip({ text }: { text: string }) {
+  return (
+    <span className="tip" tabIndex={0} role="note" aria-label={text}>
+      <HelpCircle className="tip-ic h-3.5 w-3.5" />
+      <span className="tip-bubble" role="tooltip">
+        {text}
+      </span>
+    </span>
+  );
+}
+
+// An eyebrow label with an inline help tooltip — used across all forms.
+function FieldLabel({ label, tip }: { label: string; tip: string }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <span className="eyebrow">{label}</span>
+      <Tip text={tip} />
+    </span>
+  );
+}
+
 function FacetMark({ size = 40 }: { size?: number }) {
   return (
     <svg className="facet" width={size} height={size} viewBox="0 0 512 512" aria-hidden>
@@ -178,6 +204,7 @@ export function App() {
   const { appState, selectedVaultId, toasts, panelTab, setAppState, selectVault, setNotice, pushToast, dismissToast, setPanelTab } =
     useUiStore();
   const [search, setSearch] = useState("");
+  const [replayHelp, setReplayHelp] = useState(false);
   const wasInstalling = useRef(false);
 
   useEffect(() => {
@@ -304,15 +331,20 @@ export function App() {
               </div>
             )}
           </div>
-          {selectedVault && (
-            <div className="flex shrink-0 items-center gap-3">
-              <span className={`status-pill ${statusClass(selectedVault.status)}`}>
-                <span className={`dot ${selectedVault.status === "syncing" ? "pulse" : ""}`} />
-                <SlotText text={selectedVault.status} options={{ direction: "up" }} />
-              </span>
-              <VaultActions vault={selectedVault} setNotice={setNotice} />
-            </div>
-          )}
+          <div className="flex shrink-0 items-center gap-3">
+            {selectedVault && (
+              <>
+                <span className={`status-pill ${statusClass(selectedVault.status)}`}>
+                  <span className={`dot ${selectedVault.status === "syncing" ? "pulse" : ""}`} />
+                  <SlotText text={selectedVault.status} options={{ direction: "up" }} />
+                </span>
+                <VaultActions vault={selectedVault} setNotice={setNotice} />
+              </>
+            )}
+            <button className="icon-btn" title="Show the walkthrough" onClick={() => setReplayHelp(true)}>
+              <HelpCircle className="h-4 w-4" />
+            </button>
+          </div>
         </header>
 
         <div className="grid flex-1 grid-cols-[minmax(0,1fr)_380px] overflow-hidden">
@@ -330,6 +362,17 @@ export function App() {
           </div>
         </div>
       </section>
+
+      {(!appState.onboardingComplete || replayHelp) && (
+        <OnboardingModal
+          appState={appState}
+          onGoto={setPanelTab}
+          onFinish={() => {
+            setReplayHelp(false);
+            void window.openObsidianSync.completeOnboarding();
+          }}
+        />
+      )}
 
       <ToastViewport toasts={toasts} onDismiss={dismissToast} />
     </main>
@@ -563,19 +606,61 @@ function RightPanel({
       </div>
 
       {tab === "cloud" && <CloudSetup appState={appState} setNotice={setNotice} />}
-      {tab === "add" && <AddVaultPanel setNotice={setNotice} onAdded={() => setTab("settings")} />}
+      {tab === "add" && <AddVaultPanel setNotice={setNotice} onAdded={() => setTab("settings")} goToCloud={() => setTab("cloud")} />}
       {tab === "settings" && selectedVault && <VaultSettings vault={selectedVault} setNotice={setNotice} />}
     </div>
   );
 }
 
-const remoteTypeOptions: Array<{ type: string; label: string; oauth: boolean }> = [
-  { type: "drive", label: "Google Drive", oauth: true },
-  { type: "dropbox", label: "Dropbox", oauth: true },
-  { type: "onedrive", label: "OneDrive", oauth: true },
-  { type: "protondrive", label: "Proton Drive", oauth: false },
-  { type: "crypt", label: "Encrypted (crypt)", oauth: false },
-  { type: "custom", label: "Other rclone type…", oauth: false }
+interface RemoteField {
+  key: string;
+  label: string;
+  tip: string;
+  password?: boolean;
+  optional?: boolean;
+  obscure?: boolean;
+  placeholder?: string;
+}
+
+interface RemoteKind {
+  type: string;
+  label: string;
+  kind: "oauth" | "crypt" | "fields" | "custom";
+  note?: string;
+  fields?: RemoteField[];
+}
+
+// Everything the UI needs to configure each provider without a terminal.
+const remoteKinds: RemoteKind[] = [
+  { type: "drive", label: "Google Drive", kind: "oauth", note: "Opens your browser to sign in to Google. Nothing to type here." },
+  { type: "dropbox", label: "Dropbox", kind: "oauth", note: "Opens your browser to sign in to Dropbox." },
+  { type: "onedrive", label: "OneDrive", kind: "oauth", note: "Opens your browser to sign in to Microsoft OneDrive." },
+  {
+    type: "protondrive",
+    label: "Proton Drive",
+    kind: "fields",
+    note: "Proton Drive signs in with your account. Enter your Proton credentials — they are stored encrypted by rclone.",
+    fields: [
+      { key: "username", label: "Proton email", tip: "The email address you use to log in to Proton.", placeholder: "you@proton.me" },
+      { key: "password", label: "Proton password", tip: "Your Proton account password. Stored obscured in the rclone config.", password: true, obscure: true },
+      { key: "2fa", label: "2FA code", tip: "Current 6-digit two-factor code, if 2FA is enabled on your Proton account. Leave blank otherwise.", optional: true, placeholder: "123456" }
+    ]
+  },
+  {
+    type: "s3",
+    label: "S3 / compatible (AWS, Wasabi, R2…)",
+    kind: "fields",
+    note: "Works with AWS S3 and any S3-compatible provider. Get these from your provider's dashboard.",
+    fields: [
+      { key: "provider", label: "Provider", tip: "S3 provider name, e.g. AWS, Wasabi, Cloudflare, Minio, Other.", placeholder: "AWS" },
+      { key: "access_key_id", label: "Access key ID", tip: "Your S3 access key ID." },
+      { key: "secret_access_key", label: "Secret access key", tip: "Your S3 secret access key.", password: true },
+      { key: "region", label: "Region", tip: "Bucket region, e.g. us-east-1. Optional for some providers.", optional: true, placeholder: "us-east-1" },
+      { key: "endpoint", label: "Endpoint", tip: "Custom S3 endpoint URL. Required for non-AWS providers like Wasabi or R2.", optional: true, placeholder: "s3.wasabisys.com" }
+    ]
+  },
+  { type: "crypt", label: "Encrypted (crypt)", kind: "crypt", note: "Wraps an existing remote so files are encrypted before upload." },
+  { type: "custom", label: "Other rclone type…", kind: "custom", note: "For providers not listed here. Create the remote, then finish any extra fields via Advanced CLI." }
 ];
 
 function SectionHead({ icon, title, note }: { icon: JSX.Element; title: string; note: string }) {
@@ -701,19 +786,27 @@ function RcloneStatus({ appState, setNotice }: { appState: AppState; setNotice: 
   );
 }
 
-function CreateRemote({ setNotice }: { setNotice: (notice?: string) => void }) {
+function CreateRemote({
+  setNotice,
+  onCreated
+}: {
+  setNotice: (notice?: string, kind?: ToastKind) => void;
+  onCreated?: (name: string) => void;
+}) {
   const [type, setType] = useState("drive");
   const [customType, setCustomType] = useState("");
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [remotes, setRemotes] = useState<string[]>([]);
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
+  // crypt-only state
   const [baseRemote, setBaseRemote] = useState("");
   const [basePath, setBasePath] = useState("Obsidian");
   const [pw, setPw] = useState("");
   const [pw2, setPw2] = useState("");
 
-  const selected = remoteTypeOptions.find((option) => option.type === type)!;
-  const isCrypt = type === "crypt";
+  const nameEdited = useRef(false);
+  const kind = remoteKinds.find((option) => option.type === type)!;
 
   const refresh = async () => {
     const result = await window.openObsidianSync.listRcloneRemotes();
@@ -724,29 +817,66 @@ function CreateRemote({ setNotice }: { setNotice: (notice?: string) => void }) {
     void refresh();
   }, []);
 
+  // Suggest a sensible default remote name per provider, until the user edits it.
+  useEffect(() => {
+    setFieldValues({});
+    if (nameEdited.current) return;
+    const suggested = type === "custom" ? "" : type === "protondrive" ? "proton" : type === "s3" ? "s3" : type === "onedrive" ? "onedrive" : type === "dropbox" ? "dropbox" : type === "crypt" ? "encrypted" : "gdrive";
+    setName(suggested);
+  }, [type]);
+
+  const setField = (key: string, value: string) => setFieldValues((current) => ({ ...current, [key]: value }));
+
+  const done = (remoteName: string) => {
+    setNotice(`Remote "${remoteName}" created. It's now selectable when adding a vault.`, "success");
+    void refresh();
+    onCreated?.(remoteName);
+  };
+
   const create = async () => {
+    if (!name.trim()) return setNotice("Enter a name for this remote.");
     setBusy(true);
     try {
-      if (isCrypt) {
-        if (!name || !baseRemote || !pw) return setNotice("Encrypted remote needs a name, a base remote, and a password.");
+      if (kind.kind === "crypt") {
+        if (!baseRemote || !pw) return setNotice("Encrypted remote needs a base remote and a password.");
         const result = await window.openObsidianSync.createCryptRemote({ name, baseRemote, basePath, password: pw, password2: pw2 || undefined });
-        if (result.ok) {
-          setNotice(`Encrypted remote "${result.value}" created. Point a vault at it to store files encrypted.`);
+        if (result.ok && result.value) {
           setPw("");
           setPw2("");
-          void refresh();
+          done(result.value);
         } else setNotice(result.error);
         return;
       }
 
-      const realType = type === "custom" ? customType.trim() : type;
-      if (!name || !realType) return setNotice("Enter a remote name and type.");
-      if (selected.oauth) setNotice("A browser window will open to sign in. Finish there, then return.");
+      if (kind.kind === "oauth") {
+        setNotice(`Opening your browser to sign in to ${kind.label}…`, "info");
+        const result = await window.openObsidianSync.createRemote({ name, type: kind.type });
+        if (result.ok && result.value) done(result.value);
+        else setNotice(result.error);
+        return;
+      }
+
+      if (kind.kind === "fields") {
+        const missing = (kind.fields ?? []).filter((field) => !field.optional && !fieldValues[field.key]?.trim());
+        if (missing.length) return setNotice(`Fill in: ${missing.map((field) => field.label).join(", ")}.`);
+        const options: Record<string, string> = {};
+        for (const field of kind.fields ?? []) {
+          const value = fieldValues[field.key]?.trim();
+          if (value) options[field.key] = value;
+        }
+        const obscureKeys = (kind.fields ?? []).filter((field) => field.obscure).map((field) => field.key);
+        const result = await window.openObsidianSync.createRemote({ name, type: kind.type, options, obscureKeys });
+        if (result.ok && result.value) done(result.value);
+        else setNotice(result.error);
+        return;
+      }
+
+      // custom
+      const realType = customType.trim();
+      if (!realType) return setNotice("Enter the rclone backend type (e.g. b2, pcloud, sftp).");
       const result = await window.openObsidianSync.createRemote({ name, type: realType });
-      if (result.ok) {
-        setNotice(`Remote "${result.value}" created. Add a vault and pick it as the remote.`);
-        void refresh();
-      } else setNotice(result.error);
+      if (result.ok && result.value) done(result.value);
+      else setNotice(result.error);
     } finally {
       setBusy(false);
     }
@@ -755,9 +885,9 @@ function CreateRemote({ setNotice }: { setNotice: (notice?: string) => void }) {
   return (
     <div className="space-y-2.5">
       <label className="label text-[12px]">
-        <span className="eyebrow">Provider</span>
+        <FieldLabel label="Provider" tip="Choose your cloud storage provider. Google Drive, Dropbox and OneDrive sign in through your browser; others ask for credentials here." />
         <select className="field h-9" value={type} onChange={(event) => setType(event.target.value)}>
-          {remoteTypeOptions.map((option) => (
+          {remoteKinds.map((option) => (
             <option key={option.type} value={option.type}>
               {option.label}
             </option>
@@ -765,21 +895,46 @@ function CreateRemote({ setNotice }: { setNotice: (notice?: string) => void }) {
         </select>
       </label>
 
-      {type === "custom" && (
-        <input className="field mono h-9 text-[12px]" placeholder="rclone type (s3, box, pcloud…)" value={customType} onChange={(event) => setCustomType(event.target.value)} />
+      {kind.note && <p className="text-[11px] leading-5 text-[var(--muted)]">{kind.note}</p>}
+
+      <label className="label text-[12px]">
+        <FieldLabel label="Remote name" tip="A short nickname for this connection (letters, numbers, - and _). You'll pick it when adding a vault." />
+        <input
+          className="field mono h-9 text-[12px]"
+          placeholder="e.g. gdrive"
+          value={name}
+          onChange={(event) => {
+            nameEdited.current = true;
+            setName(event.target.value.replace(/[^a-zA-Z0-9_-]/g, ""));
+          }}
+        />
+      </label>
+
+      {kind.kind === "custom" && (
+        <label className="label text-[12px]">
+          <FieldLabel label="rclone backend type" tip="The rclone backend identifier, e.g. b2, pcloud, sftp, mega. See rclone.org/overview for the full list." />
+          <input className="field mono h-9 text-[12px]" placeholder="b2, pcloud, sftp…" value={customType} onChange={(event) => setCustomType(event.target.value)} />
+        </label>
       )}
 
-      <input
-        className="field mono h-9 text-[12px]"
-        placeholder="remote name (e.g. gdrive)"
-        value={name}
-        onChange={(event) => setName(event.target.value.replace(/[^a-zA-Z0-9_-]/g, ""))}
-      />
+      {kind.kind === "fields" &&
+        (kind.fields ?? []).map((field) => (
+          <label key={field.key} className="label text-[12px]">
+            <FieldLabel label={field.optional ? `${field.label} (optional)` : field.label} tip={field.tip} />
+            <input
+              className="field h-9 text-[12px]"
+              type={field.password ? "password" : "text"}
+              placeholder={field.placeholder}
+              value={fieldValues[field.key] ?? ""}
+              onChange={(event) => setField(field.key, event.target.value)}
+            />
+          </label>
+        ))}
 
-      {isCrypt && (
+      {kind.kind === "crypt" && (
         <>
           <label className="label text-[12px]">
-            <span className="eyebrow">Base remote (must exist)</span>
+            <FieldLabel label="Base remote" tip="An existing remote (created above) that the encrypted data is stored on. Create a normal remote first if the list is empty." />
             <select className="field h-9" value={baseRemote} onChange={(event) => setBaseRemote(event.target.value)}>
               <option value="">choose…</option>
               {remotes.map((remote) => (
@@ -789,37 +944,47 @@ function CreateRemote({ setNotice }: { setNotice: (notice?: string) => void }) {
               ))}
             </select>
           </label>
-          <input className="field mono h-9 text-[12px]" placeholder="folder on base remote" value={basePath} onChange={(event) => setBasePath(event.target.value)} />
-          <input className="field h-9" type="password" placeholder="encryption password" value={pw} onChange={(event) => setPw(event.target.value)} />
-          <input className="field h-9" type="password" placeholder="salt / password2 (optional)" value={pw2} onChange={(event) => setPw2(event.target.value)} />
+          <label className="label text-[12px]">
+            <FieldLabel label="Folder on base remote" tip="Subfolder on the base remote where the encrypted files live, e.g. Obsidian." />
+            <input className="field mono h-9 text-[12px]" placeholder="Obsidian" value={basePath} onChange={(event) => setBasePath(event.target.value)} />
+          </label>
+          <label className="label text-[12px]">
+            <FieldLabel label="Encryption password" tip="Used to encrypt/decrypt your files. Keep it safe — losing it means the encrypted files cannot be recovered." />
+            <input className="field h-9" type="password" value={pw} onChange={(event) => setPw(event.target.value)} />
+          </label>
+          <label className="label text-[12px]">
+            <FieldLabel label="Salt / password2 (optional)" tip="A second password (salt) for extra strength. Optional, but if set you must remember it too." />
+            <input className="field h-9" type="password" value={pw2} onChange={(event) => setPw2(event.target.value)} />
+          </label>
           <p className="text-[11px] leading-5 text-[var(--amber)]">⚠ Keep this password safe. Without it the encrypted files cannot be read.</p>
         </>
       )}
 
-      {selected.oauth && !isCrypt && <p className="text-[11px] leading-5 text-[var(--muted)]">Creating this opens your browser to sign in to {selected.label}.</p>}
-
       <button className="btn-ember h-9 w-full" disabled={busy} onClick={() => void create()}>
-        {isCrypt ? <Lock className="h-3.5 w-3.5" /> : <PlusCircle className="h-3.5 w-3.5" />}
-        {busy ? "Working…" : isCrypt ? "Create encrypted remote" : "Create remote"}
+        {kind.kind === "crypt" ? <Lock className="h-3.5 w-3.5" /> : <PlusCircle className="h-3.5 w-3.5" />}
+        {busy ? "Working…" : kind.kind === "crypt" ? "Create encrypted remote" : `Connect ${kind.label.split(" / ")[0]}`}
       </button>
 
       {remotes.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 pt-1">
-          {remotes.map((remote) => (
-            <span key={remote} className="chip">
-              {remote}
-              <button
-                title={`Delete ${remote}`}
-                onClick={async () => {
-                  const result = await window.openObsidianSync.deleteRemote(remote);
-                  setNotice(result.ok ? `Remote "${remote}" deleted.` : result.error);
-                  void refresh();
-                }}
-              >
-                ×
-              </button>
-            </span>
-          ))}
+        <div className="pt-1">
+          <div className="eyebrow mb-1.5">Connected remotes</div>
+          <div className="flex flex-wrap gap-1.5">
+            {remotes.map((remote) => (
+              <span key={remote} className="chip">
+                {remote}
+                <button
+                  title={`Delete ${remote}`}
+                  onClick={async () => {
+                    const result = await window.openObsidianSync.deleteRemote(remote);
+                    setNotice(result.ok ? `Remote "${remote}" deleted.` : result.error);
+                    void refresh();
+                  }}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -934,7 +1099,15 @@ function BackupBox({ setNotice }: { setNotice: (notice?: string) => void }) {
   );
 }
 
-function AddVaultPanel({ setNotice, onAdded }: { setNotice: (notice?: string) => void; onAdded: () => void }) {
+function AddVaultPanel({
+  setNotice,
+  onAdded,
+  goToCloud
+}: {
+  setNotice: (notice?: string, kind?: ToastKind) => void;
+  onAdded: () => void;
+  goToCloud: () => void;
+}) {
   const [input, setInput] = useState<AddVaultInput>({
     localPath: "",
     provider: "google-drive",
@@ -948,23 +1121,131 @@ function AddVaultPanel({ setNotice, onAdded }: { setNotice: (notice?: string) =>
     autoSync: true
   });
   const [remotes, setRemotes] = useState<string[]>([]);
+  const [scan, setScan] = useState<ScanResult | null>(null);
+  const [picked, setPicked] = useState<Record<string, boolean>>({});
+  const [busy, setBusy] = useState(false);
 
   const set = <K extends keyof AddVaultInput>(key: K, value: AddVaultInput[K]) => setInput((current) => ({ ...current, [key]: value }));
   const setSelective = (key: keyof SelectiveSyncSettings, value: boolean) =>
     setInput((current) => ({ ...current, selectiveSync: { ...current.selectiveSync, [key]: value } }));
 
+  const loadRemotes = async () => {
+    const result = await window.openObsidianSync.listRcloneRemotes();
+    if (result.ok) {
+      setRemotes(result.value ?? []);
+      setInput((current) => (current.remote || !(result.value ?? []).length ? current : { ...current, remote: result.value![0] }));
+    }
+  };
+  useEffect(() => {
+    void loadRemotes();
+  }, []);
+
+  const runScan = async () => {
+    const result = await window.openObsidianSync.scanFolder();
+    if (!result.ok || !result.value) return setNotice(result.error);
+    setScan(result.value);
+    const initial: Record<string, boolean> = {};
+    result.value.candidates.forEach((candidate) => (initial[candidate.path] = !candidate.alreadyAdded));
+    setPicked(initial);
+  };
+
+  const addScanned = async () => {
+    if (!scan) return;
+    const paths = scan.candidates.filter((candidate) => picked[candidate.path] && !candidate.alreadyAdded).map((candidate) => candidate.path);
+    if (!paths.length) return setNotice("Select at least one new vault to add.");
+    if (!input.remote) return setNotice("Choose a remote first, or connect one under Cloud.");
+    setBusy(true);
+    const result = await window.openObsidianSync.addScanned({
+      paths,
+      provider: input.provider,
+      remote: input.remote,
+      remotePathPrefix: "Obsidian",
+      includeObsidianConfig: input.includeObsidianConfig,
+      selectiveSync: input.selectiveSync,
+      conflictStrategy: input.conflictStrategy,
+      excludePatterns: input.excludePatterns,
+      syncIntervalMinutes: input.syncIntervalMinutes,
+      autoSync: input.autoSync
+    });
+    setBusy(false);
+    if (result.ok) {
+      setNotice(`Added ${result.value} vault(s). Select each and hit Resync once to start syncing.`, "success");
+      setScan(null);
+      onAdded();
+    } else setNotice(result.error);
+  };
+
+  const pickedCount = scan ? scan.candidates.filter((candidate) => picked[candidate.path] && !candidate.alreadyAdded).length : 0;
+
   return (
     <div className="panel p-4">
-      <SectionHead icon={<Plus />} title="Add vault" note="Point at an Obsidian folder, pick a remote, and it starts syncing." />
+      <SectionHead icon={<Plus />} title="Add vaults" note="Scan a folder to add every vault at once, or add a single vault below." />
+
+      {/* ---- bulk scan ---- */}
+      <div className="mb-4 rounded border border-[var(--hairline-soft)] bg-[var(--obsidian)] p-3">
+        <div className="mb-2 flex items-center gap-1.5">
+          <FieldLabel
+            label="Scan a folder"
+            tip="Pick a parent folder (e.g. your Documents or a Vaults folder). Every sub-folder containing a .obsidian directory is detected and can be added in one go."
+          />
+        </div>
+        <button className="btn h-9 w-full" onClick={() => void runScan()}>
+          <FolderSearch className="h-4 w-4" />
+          Scan folder for vaults
+        </button>
+
+        {scan && (
+          <div className="mt-3 space-y-2">
+            <div className="mono text-[10.5px] text-[var(--faint)]">
+              {scan.candidates.length} found in {scan.baseDir}
+            </div>
+            <div className="max-h-44 space-y-1 overflow-auto">
+              {scan.candidates.map((candidate) => (
+                <label
+                  key={candidate.path}
+                  className={`flex items-center gap-2 rounded border px-2.5 py-2 text-[12px] ${
+                    candidate.alreadyAdded ? "border-[var(--hairline-soft)] text-[var(--faint)]" : "border-[var(--hairline)] text-[var(--bone-dim)]"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    className="accent-[var(--ember)]"
+                    disabled={candidate.alreadyAdded}
+                    checked={!!picked[candidate.path] && !candidate.alreadyAdded}
+                    onChange={(event) => setPicked((current) => ({ ...current, [candidate.path]: event.target.checked }))}
+                  />
+                  <span className="min-w-0 flex-1 truncate" title={candidate.path}>
+                    {candidate.name}
+                  </span>
+                  {candidate.alreadyAdded && <span className="mono text-[10px] text-[var(--jade)]">added</span>}
+                </label>
+              ))}
+            </div>
+            <p className="text-[11px] leading-5 text-[var(--muted)]">
+              New vaults use the remote and options selected below. Each syncs to <span className="mono">Obsidian/&lt;vault name&gt;</span>.
+            </p>
+            <button className="btn-ember h-9 w-full" disabled={busy || pickedCount === 0} onClick={() => void addScanned()}>
+              <Plus className="h-3.5 w-3.5" />
+              {busy ? "Adding…" : `Add ${pickedCount} vault${pickedCount === 1 ? "" : "s"}`}
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="mb-3 flex items-center gap-3">
+        <span className="h-px flex-1 bg-[var(--hairline-soft)]" />
+        <span className="eyebrow">or add one vault</span>
+        <span className="h-px flex-1 bg-[var(--hairline-soft)]" />
+      </div>
 
       <div className="space-y-3">
         <label className="label text-[12px]">
-          <span className="eyebrow">Local vault</span>
+          <FieldLabel label="Local vault" tip="The folder on this computer that is your Obsidian vault (it contains a hidden .obsidian directory). Use the folder button to browse." />
           <div className="flex gap-2">
             <input className="field mono flex-1 text-[12px]" value={input.localPath} onChange={(event) => set("localPath", event.target.value)} placeholder="C:\Vaults\Notes" />
             <button
               className="icon-btn"
-              title="Choose vault"
+              title="Choose vault folder"
               onClick={async () => {
                 const result = await window.openObsidianSync.chooseVault();
                 if (result.ok && result.value) set("localPath", result.value);
@@ -977,7 +1258,7 @@ function AddVaultPanel({ setNotice, onAdded }: { setNotice: (notice?: string) =>
         </label>
 
         <label className="label text-[12px]">
-          <span className="eyebrow">Provider</span>
+          <FieldLabel label="Provider" tip="Which cloud service this vault syncs to. This is just a label; the actual connection is the remote you pick below." />
           <select className="field h-9" value={input.provider} onChange={(event) => set("provider", event.target.value as Provider)}>
             {providers.map((provider) => (
               <option key={provider.id} value={provider.id}>
@@ -985,43 +1266,39 @@ function AddVaultPanel({ setNotice, onAdded }: { setNotice: (notice?: string) =>
               </option>
             ))}
           </select>
-          <span className="mono text-[11px] text-[var(--faint)]">{providers.find((provider) => provider.id === input.provider)?.hint}</span>
         </label>
 
         <label className="label text-[12px]">
-          <span className="eyebrow">rclone remote</span>
-          <div className="flex gap-2">
-            <input className="field mono flex-1 text-[12px]" value={input.remote} onChange={(event) => set("remote", event.target.value)} placeholder="gdrive" />
-            <button
-              className="icon-btn"
-              title="List remotes"
-              onClick={async () => {
-                const result = await window.openObsidianSync.listRcloneRemotes();
-                if (result.ok) setRemotes(result.value ?? []);
-                else setNotice(result.error);
-              }}
-            >
-              <RefreshCw className="h-4 w-4" />
-            </button>
-          </div>
-          {remotes.length > 0 && (
-            <div className="mt-1 flex flex-wrap gap-1.5">
-              {remotes.map((remote) => (
-                <button key={remote} className="chip" onClick={() => set("remote", remote)}>
-                  {remote}
-                </button>
-              ))}
+          <FieldLabel label="rclone remote" tip="The connection used to reach your cloud. Create one under the Cloud tab first — Proton Drive, Google Drive, etc." />
+          {remotes.length > 0 ? (
+            <div className="flex gap-2">
+              <select className="field h-9 flex-1" value={input.remote} onChange={(event) => set("remote", event.target.value)}>
+                <option value="">choose a remote…</option>
+                {remotes.map((remote) => (
+                  <option key={remote} value={remote}>
+                    {remote}
+                  </option>
+                ))}
+              </select>
+              <button className="icon-btn" title="Refresh remotes" onClick={() => void loadRemotes()}>
+                <RefreshCw className="h-4 w-4" />
+              </button>
             </div>
+          ) : (
+            <button className="btn h-9 w-full" onClick={goToCloud}>
+              <Cloud className="h-3.5 w-3.5" />
+              No remotes yet — connect a cloud provider
+            </button>
           )}
         </label>
 
         <label className="label text-[12px]">
-          <span className="eyebrow">Remote folder</span>
+          <FieldLabel label="Remote folder" tip="Path inside the remote where this vault is stored, e.g. Obsidian/My Vault. Created automatically if it doesn't exist." />
           <input className="field mono text-[12px]" value={input.remotePath} onChange={(event) => set("remotePath", event.target.value)} />
         </label>
 
         <label className="label text-[12px]">
-          <span className="eyebrow">Conflict strategy</span>
+          <FieldLabel label="Conflict strategy" tip="When the same file changed in both places, which copy wins. The losing copy is always kept as a .conflict file, never deleted." />
           <select className="field" value={input.conflictStrategy} onChange={(event) => set("conflictStrategy", event.target.value as ConflictStrategy)}>
             {conflictStrategyOptions.map((option) => (
               <option key={option.id} value={option.id}>
@@ -1033,11 +1310,11 @@ function AddVaultPanel({ setNotice, onAdded }: { setNotice: (notice?: string) =>
 
         <div className="grid grid-cols-2 gap-3">
           <label className="label text-[12px]">
-            <span className="eyebrow">Interval (min)</span>
+            <FieldLabel label="Interval (min)" tip="How often to auto-sync on a timer, in minutes, in addition to syncing when files change." />
             <input className="field mono" type="number" min={1} value={input.syncIntervalMinutes} onChange={(event) => set("syncIntervalMinutes", Number(event.target.value))} />
           </label>
           <label className="label text-[12px]">
-            <span className="eyebrow">Auto sync</span>
+            <FieldLabel label="Auto sync" tip="When on, the vault syncs automatically on file changes and on the timer. When off, you sync manually with the Sync button." />
             <select className="field" value={input.autoSync ? "yes" : "no"} onChange={(event) => set("autoSync", event.target.value === "yes")}>
               <option value="yes">On</option>
               <option value="no">Off</option>
@@ -1048,10 +1325,13 @@ function AddVaultPanel({ setNotice, onAdded }: { setNotice: (notice?: string) =>
         <label className="flex items-center gap-2.5 text-[13px] text-[var(--bone-dim)]">
           <input type="checkbox" className="accent-[var(--ember)]" checked={input.includeObsidianConfig} onChange={(event) => set("includeObsidianConfig", event.target.checked)} />
           Sync .obsidian settings
+          <Tip text="Syncs your Obsidian settings, themes and plugins across devices — but skips the per-device window layout so open panes don't fight each other." />
         </label>
 
         <div>
-          <div className="eyebrow mb-2">Selective sync</div>
+          <div className="mb-2 flex items-center gap-1.5">
+            <FieldLabel label="Selective sync" tip="Uncheck a media type to keep those files out of the cloud (they stay local only). Handy to avoid syncing large videos." />
+          </div>
           <div className="grid grid-cols-2 gap-2">
             {selectiveSyncOptions.map((option) => (
               <label key={option.key} className="flex items-center gap-2 rounded border border-[var(--hairline-soft)] bg-[var(--obsidian)] px-2.5 py-2 text-[12px] text-[var(--bone-dim)]">
@@ -1063,7 +1343,7 @@ function AddVaultPanel({ setNotice, onAdded }: { setNotice: (notice?: string) =>
         </div>
 
         <label className="label text-[12px]">
-          <span className="eyebrow">Exclude patterns</span>
+          <FieldLabel label="Exclude patterns" tip="Glob patterns (one per line) for files/folders to never sync, e.g. .trash/** or **/*.tmp." />
           <textarea className="field mono min-h-20 resize-y text-[12px]" value={input.excludePatterns.join("\n")} onChange={(event) => set("excludePatterns", event.target.value.split(/\r?\n/))} />
         </label>
 
@@ -1072,7 +1352,7 @@ function AddVaultPanel({ setNotice, onAdded }: { setNotice: (notice?: string) =>
           onClick={async () => {
             const result = await window.openObsidianSync.addVault(input);
             if (result.ok) {
-              setNotice("Vault added. Hit Resync once to establish the bisync baseline.");
+              setNotice("Vault added. Hit Resync once to establish the bisync baseline.", "success");
               onAdded();
             } else setNotice(result.error);
           }}
@@ -1161,6 +1441,160 @@ function VaultSettings({ vault, setNotice }: { vault: VaultConfig; setNotice: (n
             <Trash2 className="h-4 w-4" />
             Remove
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+interface OnboardStep {
+  eyebrow: string;
+  title: string;
+  body: JSX.Element;
+  cta?: { label: string; action: () => void };
+}
+
+function OnboardingModal({
+  appState,
+  onGoto,
+  onFinish
+}: {
+  appState: AppState;
+  onGoto: (tab: PanelTab) => void;
+  onFinish: () => void;
+}) {
+  const [step, setStep] = useState(0);
+
+  const steps: OnboardStep[] = [
+    {
+      eyebrow: "Welcome",
+      title: "Your notes, your cloud, your keys.",
+      body: (
+        <p>
+          Open Obsidian Sync keeps your Obsidian vaults in sync through cloud storage <b>you already own</b> — Google Drive,
+          Dropbox, Proton Drive, and 70+ more. No subscription, no separate server. This quick tour sets you up in three steps.
+        </p>
+      )
+    },
+    {
+      eyebrow: "Step 1 · Engine",
+      title: "The sync engine installs itself.",
+      body: (
+        <div className="space-y-3">
+          <p>
+            Under the hood we use <b>rclone</b>, a trusted open-source tool. You don't need to install anything — the app
+            downloads and verifies it automatically on first launch.
+          </p>
+          <div className="rounded border border-[var(--hairline)] bg-[var(--obsidian)] p-3">
+            {appState.rcloneInstalling ? (
+              <div className="flex items-center gap-2 text-[13px] text-[var(--ember)]">
+                <RefreshCw className="h-4 w-4 animate-spin" /> Installing rclone… {appState.rcloneDownloadPercent ?? ""}
+                {appState.rcloneDownloadPercent !== undefined ? "%" : ""}
+              </div>
+            ) : appState.rcloneAvailable ? (
+              <div className="flex items-center gap-2 text-[13px] text-[var(--jade)]">
+                <CheckCircle2 className="h-4 w-4" /> Sync engine ready.
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-[13px] text-[var(--clay)]">
+                <AlertTriangle className="h-4 w-4" /> Not installed yet — it'll download automatically, or trigger it in Cloud
+                setup.
+              </div>
+            )}
+          </div>
+        </div>
+      )
+    },
+    {
+      eyebrow: "Step 2 · Connect",
+      title: "Connect your cloud.",
+      body: (
+        <p>
+          Open the <b>Cloud</b> tab and create a remote. Google Drive, Dropbox and OneDrive open your browser to sign in;
+          Proton Drive and S3 ask for credentials right in the app. Want zero-knowledge privacy? Add an <b>Encrypted (crypt)</b>{" "}
+          remote so your provider only ever sees ciphertext.
+        </p>
+      ),
+      cta: {
+        label: "Open Cloud setup",
+        action: () => {
+          onGoto("cloud");
+          onFinish();
+        }
+      }
+    },
+    {
+      eyebrow: "Step 3 · Add vaults",
+      title: "Add one vault — or a whole folder.",
+      body: (
+        <p>
+          In the <b>Add</b> tab, browse to a single vault, or use <b>Scan folder for vaults</b> to point at a parent folder and
+          add every vault inside it at once. Pick your remote, then hit <b>Resync</b> once to establish the baseline. After that
+          it syncs automatically. Hover any <HelpCircle className="inline h-3.5 w-3.5 text-[var(--ember)]" /> for help on a
+          setting.
+        </p>
+      ),
+      cta: {
+        label: "Add my vaults",
+        action: () => {
+          onGoto("add");
+          onFinish();
+        }
+      }
+    }
+  ];
+
+  const current = steps[step];
+  const last = step === steps.length - 1;
+
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true">
+      <div className="modal">
+        <div className="modal-body">
+          <div className="mb-5 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <FacetMark size={30} />
+              <span className="eyebrow">{current.eyebrow}</span>
+            </div>
+            <button className="toast-close" title="Skip tour" onClick={onFinish}>
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          <Shimmer as="h2" className="display mb-3 block text-[24px] text-[var(--bone)]">
+            {current.title}
+          </Shimmer>
+          <div className="text-[14px] leading-6 text-[var(--bone-dim)]">{current.body}</div>
+
+          <div className="mt-7 flex items-center justify-between">
+            <div className="modal-dots">
+              {steps.map((_, index) => (
+                <span key={index} className="modal-dot" data-on={index === step} />
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              {step > 0 && (
+                <button className="btn h-9" onClick={() => setStep((value) => value - 1)}>
+                  Back
+                </button>
+              )}
+              {current.cta && (
+                <button className="btn h-9" onClick={current.cta.action}>
+                  {current.cta.label}
+                </button>
+              )}
+              {last ? (
+                <button className="btn-ember h-9" onClick={onFinish}>
+                  <Sparkles className="h-4 w-4" />
+                  Done
+                </button>
+              ) : (
+                <button className="btn-ember h-9" onClick={() => setStep((value) => value + 1)}>
+                  Next
+                </button>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>

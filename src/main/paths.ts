@@ -6,14 +6,23 @@ export interface DataPathInput {
   env: NodeJS.ProcessEnv;
 }
 
-export const resolveDataPath = ({ appIsPackaged, userDataPath, env }: DataPathInput) => {
+// Where app data lives. Default to the OS's stable per-user app-data folder
+// (Windows %APPDATA%, macOS ~/Library/Application Support, Linux ~/.config) so
+// moving or updating the executable never orphans a user's vaults. An explicit
+// OPEN_OBSIDIAN_SYNC_DATA_DIR still wins for portable-on-a-stick / dev use.
+export const resolveDataPath = ({ userDataPath, env }: DataPathInput) => {
   if (env.OPEN_OBSIDIAN_SYNC_DATA_DIR) {
     return { dataPath: env.OPEN_OBSIDIAN_SYNC_DATA_DIR, portableMode: true };
   }
-
-  if (appIsPackaged && env.PORTABLE_EXECUTABLE_DIR) {
-    return { dataPath: path.join(env.PORTABLE_EXECUTABLE_DIR, "open-obsidian-sync-data"), portableMode: true };
-  }
-
   return { dataPath: userDataPath, portableMode: false };
+};
+
+// Older builds kept data next to the portable exe. List those legacy locations
+// so their config can be migrated into the new stable folder on first run.
+export const legacyDataDirs = (env: NodeJS.ProcessEnv): string[] => {
+  const dirs: string[] = [];
+  if (env.PORTABLE_EXECUTABLE_DIR) {
+    dirs.push(path.join(env.PORTABLE_EXECUTABLE_DIR, "open-obsidian-sync-data"));
+  }
+  return dirs;
 };

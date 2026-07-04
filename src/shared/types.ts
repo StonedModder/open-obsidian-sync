@@ -57,6 +57,34 @@ export interface CreateRemoteInput {
   name: string;
   type: string;
   options?: Record<string, string>;
+  // Option keys whose values must be rclone-obscured before storing (e.g. passwords).
+  obscureKeys?: string[];
+}
+
+// A folder found during a scan that looks like an Obsidian vault (has .obsidian/).
+export interface VaultCandidate {
+  path: string;
+  name: string;
+  alreadyAdded: boolean;
+}
+
+export interface ScanResult {
+  baseDir: string;
+  candidates: VaultCandidate[];
+}
+
+// Bulk-add scanned vaults sharing one remote + defaults; remote folder is auto per vault.
+export interface AddScannedInput {
+  paths: string[];
+  provider: Provider;
+  remote: string;
+  remotePathPrefix: string;
+  includeObsidianConfig: boolean;
+  selectiveSync: SelectiveSyncSettings;
+  conflictStrategy: ConflictStrategy;
+  excludePatterns: string[];
+  syncIntervalMinutes: number;
+  autoSync: boolean;
 }
 
 export interface CreateCryptInput {
@@ -94,6 +122,7 @@ export interface AppState {
   rcloneInstalling: boolean;
   rcloneDownloadPercent?: number;
   rcloneDownloadDetail?: string;
+  onboardingComplete: boolean;
   version: string;
 }
 
