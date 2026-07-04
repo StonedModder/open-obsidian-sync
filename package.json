@@ -1,0 +1,91 @@
+{
+  "name": "open-obsidian-sync",
+  "version": "0.1.0",
+  "description": "Open-source Obsidian vault sync companion powered by rclone.",
+  "main": "dist/main/main.js",
+  "author": "Open Obsidian Sync contributors",
+  "license": "MIT",
+  "scripts": {
+    "dev": "npm run build && electron .",
+    "start": "npm run build && electron .",
+    "build": "npm run build:renderer && npm run build:main",
+    "build:renderer": "vite build",
+    "build:main": "tsc -p tsconfig.main.json",
+    "typecheck": "tsc --noEmit -p tsconfig.renderer.json && tsc --noEmit -p tsconfig.main.json",
+    "test": "npm run build:main && node scripts/sync-self-check.js",
+    "build:win-portable": "npm run build && electron-builder --win portable"
+  },
+  "dependencies": {
+    "@fontsource/fraunces": "^5.2.9",
+    "@fontsource/ibm-plex-mono": "^5.2.7",
+    "@fontsource/ibm-plex-sans": "^5.2.8",
+    "chokidar": "^4.0.3",
+    "gradient-shimmer": "^0.1.1",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "slot-text": "^0.3.2",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "latest",
+    "@types/node": "latest",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "latest",
+    "electron": "latest",
+    "electron-builder": "latest",
+    "tailwindcss": "latest",
+    "typescript": "latest",
+    "vite": "latest"
+  },
+  "build": {
+    "appId": "dev.openobsidiansync.app",
+    "productName": "Open Obsidian Sync",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "assets",
+        "to": "assets"
+      },
+      {
+        "from": "resources/rclone",
+        "to": "rclone",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "mac": {
+      "icon": "assets/icon.icns",
+      "target": [
+        "dmg"
+      ]
+    },
+    "linux": {
+      "icon": "assets/icon.png",
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    }
+  }
+}

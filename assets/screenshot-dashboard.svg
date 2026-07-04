@@ -1,0 +1,56 @@
+<svg width="1440" height="900" viewBox="0 0 1440 900" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Open Obsidian Sync dashboard preview">
+  <rect width="1440" height="900" fill="#111111"/>
+  <rect x="0" y="0" width="330" height="900" fill="#09090b"/>
+  <rect x="330" y="0" width="1110" height="82" fill="#18181b"/>
+  <rect x="36" y="36" width="42" height="42" rx="8" fill="#7c3aed"/>
+  <text x="94" y="55" fill="#fafafa" font-family="Inter, Segoe UI, sans-serif" font-size="21" font-weight="700">Open Obsidian Sync</text>
+  <text x="94" y="76" fill="#71717a" font-family="Inter, Segoe UI, sans-serif" font-size="13">rclone-backed vault sync</text>
+  <text x="365" y="34" fill="#71717a" font-family="Inter, Segoe UI, sans-serif" font-size="14">Unofficial open-source companion</text>
+  <text x="365" y="64" fill="#fafafa" font-family="Inter, Segoe UI, sans-serif" font-size="26" font-weight="700">Research Vault</text>
+  <g fill="#18181b" stroke="#3f3f46">
+    <rect x="26" y="128" width="278" height="82" rx="8"/>
+    <rect x="26" y="226" width="278" height="82" rx="8"/>
+  </g>
+  <text x="46" y="158" fill="#fafafa" font-family="Inter, Segoe UI, sans-serif" font-size="16" font-weight="700">Research Vault</text>
+  <text x="46" y="184" fill="#71717a" font-family="Inter, Segoe UI, sans-serif" font-size="13">~\Vaults\Research</text>
+  <text x="46" y="256" fill="#fafafa" font-family="Inter, Segoe UI, sans-serif" font-size="16" font-weight="700">Writing Vault</text>
+  <text x="46" y="282" fill="#71717a" font-family="Inter, Segoe UI, sans-serif" font-size="13">~\Vaults\Writing</text>
+  <g fill="#18181b" stroke="#27272a">
+    <rect x="365" y="124" width="160" height="104" rx="8"/>
+    <rect x="545" y="124" width="210" height="104" rx="8"/>
+    <rect x="775" y="124" width="150" height="104" rx="8"/>
+    <rect x="945" y="124" width="150" height="104" rx="8"/>
+    <rect x="1115" y="124" width="280" height="104" rx="8"/>
+    <rect x="365" y="270" width="710" height="500" rx="8"/>
+    <rect x="1100" y="270" width="295" height="500" rx="8"/>
+  </g>
+  <text x="390" y="158" fill="#a78bfa" font-family="Inter, Segoe UI, sans-serif" font-size="13">STATUS</text>
+  <text x="390" y="196" fill="#d9f99d" font-family="Inter, Segoe UI, sans-serif" font-size="22" font-weight="700">synced</text>
+  <text x="570" y="158" fill="#a78bfa" font-family="Inter, Segoe UI, sans-serif" font-size="13">LAST SYNCED</text>
+  <text x="570" y="196" fill="#fafafa" font-family="Inter, Segoe UI, sans-serif" font-size="18" font-weight="700">Today, 11:57 AM</text>
+  <text x="800" y="158" fill="#a78bfa" font-family="Inter, Segoe UI, sans-serif" font-size="13">FILES</text>
+  <text x="800" y="196" fill="#fafafa" font-family="Inter, Segoe UI, sans-serif" font-size="22" font-weight="700">1,428</text>
+  <text x="970" y="158" fill="#a78bfa" font-family="Inter, Segoe UI, sans-serif" font-size="13">PENDING</text>
+  <text x="970" y="196" fill="#fafafa" font-family="Inter, Segoe UI, sans-serif" font-size="22" font-weight="700">0</text>
+  <text x="1140" y="158" fill="#a78bfa" font-family="Inter, Segoe UI, sans-serif" font-size="13">REMOTE</text>
+  <text x="1140" y="196" fill="#fafafa" font-family="Inter, Segoe UI, sans-serif" font-size="18" font-weight="700">gdrive:Obsidian/Research</text>
+  <text x="392" y="314" fill="#fafafa" font-family="Inter, Segoe UI, sans-serif" font-size="19" font-weight="700">Activity log</text>
+  <text x="392" y="342" fill="#71717a" font-family="Inter, Segoe UI, sans-serif" font-size="13">Uploads, downloads, conflicts, and rclone notices.</text>
+  <g fill="#27272a">
+    <rect x="392" y="384" width="650" height="1"/>
+    <rect x="392" y="446" width="650" height="1"/>
+    <rect x="392" y="508" width="650" height="1"/>
+  </g>
+  <text x="392" y="422" fill="#d9f99d" font-family="Inter, Segoe UI, sans-serif" font-size="15">Sync complete</text>
+  <text x="392" y="484" fill="#d4d4d8" font-family="Inter, Segoe UI, sans-serif" font-size="15">Bisync successful</text>
+  <text x="392" y="546" fill="#d4d4d8" font-family="Inter, Segoe UI, sans-serif" font-size="15">Local change detected</text>
+  <text x="1130" y="314" fill="#fafafa" font-family="Inter, Segoe UI, sans-serif" font-size="19" font-weight="700">Add vault</text>
+  <rect x="1130" y="350" width="235" height="38" rx="6" fill="#18181b" stroke="#3f3f46"/>
+  <rect x="1130" y="414" width="235" height="38" rx="6" fill="#18181b" stroke="#3f3f46"/>
+  <rect x="1130" y="478" width="235" height="38" rx="6" fill="#18181b" stroke="#3f3f46"/>
+  <rect x="1130" y="556" width="235" height="42" rx="6" fill="#7c3aed"/>
+  <text x="1150" y="375" fill="#71717a" font-family="Inter, Segoe UI, sans-serif" font-size="13">C:\Vaults\Research</text>
+  <text x="1150" y="439" fill="#fafafa" font-family="Inter, Segoe UI, sans-serif" font-size="13">Google Drive</text>
+  <text x="1150" y="503" fill="#fafafa" font-family="Inter, Segoe UI, sans-serif" font-size="13">gdrive</text>
+  <text x="1212" y="583" text-anchor="middle" fill="#ffffff" font-family="Inter, Segoe UI, sans-serif" font-size="15" font-weight="700">Add vault</text>
+</svg>

@@ -1,0 +1,11 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Open Obsidian Sync icon">
+  <rect width="512" height="512" fill="#111111"/>
+  <path d="M258 48 402 138 448 300 322 462 136 420 70 236 152 92Z" fill="#7C3AED"/>
+  <path d="M258 48 402 138 210 246 152 92Z" fill="#A78BFA"/>
+  <path d="M210 246 322 462 136 420 70 236Z" fill="#4C1D95"/>
+  <path d="M152 92 258 384M402 138 210 246" stroke="#D8B4FE" stroke-width="5" stroke-linecap="round"/>
+  <path d="M336 224a104 76 0 0 0-160 66" fill="none" stroke="#ECFCCB" stroke-width="17" stroke-linecap="round"/>
+  <path d="M176 290 154 288 166 270Z" fill="#ECFCCB"/>
+  <path d="M176 288a104 76 0 0 0 160-66" fill="none" stroke="#ECFCCB" stroke-width="17" stroke-linecap="round"/>
+  <path d="M336 222 358 224 346 242Z" fill="#ECFCCB"/>
+</svg>

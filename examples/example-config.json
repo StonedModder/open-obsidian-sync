@@ -1,0 +1,22 @@
+{
+  "name": "Example Vault",
+  "localPath": "C:\\Vaults\\Example Vault",
+  "provider": "google-drive",
+  "remote": "gdrive",
+  "remotePath": "Obsidian/Example Vault",
+  "includeObsidianConfig": true,
+  "selectiveSync": {
+    "images": true,
+    "audio": true,
+    "videos": true,
+    "pdfs": true
+  },
+  "conflictStrategy": "newer",
+  "excludePatterns": [
+    ".obsidian/workspace.json",
+    ".obsidian/workspace-mobile.json",
+    ".trash/**"
+  ],
+  "syncIntervalMinutes": 10,
+  "autoSync": true
+}
