@@ -640,11 +640,33 @@ const remoteKinds: RemoteKind[] = [
     type: "protondrive",
     label: "Proton Drive",
     kind: "fields",
-    note: "Proton Drive signs in with your account. Enter your Proton credentials — they are stored encrypted by rclone.",
+    note: "Proton Drive signs in with your account. Credentials are obscured in rclone.conf. For authenticator-app 2FA, use the TOTP secret key (not a one-time code).",
     fields: [
       { key: "username", label: "Proton email", tip: "The email address you use to log in to Proton.", placeholder: "you@proton.me" },
-      { key: "password", label: "Proton password", tip: "Your Proton account password. Stored obscured in the rclone config.", password: true, obscure: true },
-      { key: "2fa", label: "2FA code", tip: "Current 6-digit two-factor code, if 2FA is enabled on your Proton account. Leave blank otherwise.", optional: true, placeholder: "123456" }
+      { key: "password", label: "Proton password", tip: "Your Proton account (login) password.", password: true, obscure: true },
+      {
+        key: "otp_secret_key",
+        label: "2FA secret key (TOTP)",
+        tip: "Base32 secret from your authenticator setup (recommended for app-based 2FA). rclone generates codes automatically — do not paste a one-time code here.",
+        optional: true,
+        password: true,
+        obscure: true
+      },
+      {
+        key: "2fa",
+        label: "2FA code (one-time)",
+        tip: "Current 6-digit code only if you are not using a TOTP secret key above.",
+        optional: true,
+        placeholder: "123456"
+      },
+      {
+        key: "mailbox_password",
+        label: "Mailbox password",
+        tip: "Only for legacy two-password Proton Mail accounts (separate from login password).",
+        optional: true,
+        password: true,
+        obscure: true
+      }
     ]
   },
   {

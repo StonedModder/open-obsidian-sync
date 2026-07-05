@@ -1,0 +1,36 @@
+name: Build Linux release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Install deps
+        run: npm ci
+      - name: Bundle rclone (linux)
+        run: node scripts/download-rclone.js
+      - name: Test
+        run: npm run typecheck && npm test
+      - name: Build AppImage and deb
+        run: |
+          rm -rf release/linux-unpacked
+          npm run build
+          npx electron-builder --linux AppImage deb
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-release
+          path: |
+            release/*.AppImage
+            release/*.deb
+          if-no-files-found: error

@@ -165,6 +165,12 @@ powershell -ExecutionPolicy Bypass -File scripts\download-rclone.ps1
 
 If `resources/rclone/rclone.exe` is missing, the app falls back to `rclone` on your `PATH`.
 
+On Linux or macOS:
+
+```bash
+bash scripts/download-rclone.sh
+```
+
 ### Portable Windows build
 
 ```bat
@@ -172,6 +178,32 @@ compile.bat
 ```
 
 Checks for Node/npm, installs deps, builds icons, downloads rclone, and produces a portable `.exe` in `release/`.
+
+### Linux build (AppImage + deb)
+
+**Recommended:** build on Linux or WSL with a **native** Node/npm (not Windows `node.exe` on PATH).
+
+```bash
+bash compile.sh
+```
+
+On **Windows** you can cross-build the `.deb` after bundling a Linux rclone binary:
+
+```bash
+node scripts/download-rclone.js   # run from WSL once, or copy linux rclone into resources/rclone/
+rm -rf release/linux-unpacked
+npm run build:linux
+```
+
+`AppImage` needs Linux (symlinks). Use `npm run build:linux-appimage` on Linux/WSL only.
+
+Artifacts land in `release/`.
+
+Optional live Proton Drive check (credentials via env, never committed):
+
+```bash
+PROTON_EMAIL=you@proton.me PROTON_PASSWORD=... PROTON_OTP_SECRET=... node scripts/proton-remote-smoke.js
+```
 
 <br>
 

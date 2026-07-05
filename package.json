@@ -3,7 +3,10 @@
   "version": "0.0.3",
   "description": "Open-source Obsidian vault sync companion powered by rclone.",
   "main": "dist/main/main.js",
-  "author": "Open Obsidian Sync contributors",
+  "author": {
+    "name": "Open Obsidian Sync contributors",
+    "email": "openobsidiansync@users.noreply.github.com"
+  },
   "license": "MIT",
   "scripts": {
     "dev": "npm run build && electron .",
@@ -13,7 +16,9 @@
     "build:main": "tsc -p tsconfig.main.json",
     "typecheck": "tsc --noEmit -p tsconfig.renderer.json && tsc --noEmit -p tsconfig.main.json",
     "test": "npm run build:main && node scripts/sync-self-check.js",
-    "build:win-portable": "npm run build && electron-builder --win portable"
+    "build:win-portable": "npm run build && electron-builder --win portable",
+    "build:linux": "npm run build && electron-builder --linux AppImage deb",
+    "build:linux-appimage": "npm run build && electron-builder --linux AppImage"
   },
   "dependencies": {
     "@fontsource/fraunces": "^5.2.9",
@@ -42,6 +47,7 @@
   "build": {
     "appId": "dev.openobsidiansync.app",
     "productName": "Open Obsidian Sync",
+    "desktopName": "open-obsidian-sync",
     "directories": {
       "output": "release"
     },
@@ -82,6 +88,9 @@
     },
     "linux": {
       "icon": "assets/icon.png",
+      "executableName": "open-obsidian-sync",
+      "category": "Utility",
+      "syncDesktopName": true,
       "target": [
         "AppImage",
         "deb"
