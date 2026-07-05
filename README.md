@@ -75,7 +75,7 @@ npm start
 
 Then, inside the app:
 
-1. **Cloud setup → Remotes** → pick your provider → **Create remote** (a browser opens to sign in).
+1. **Cloud → Connections** → add your provider (or **Add new**), then test reachability.
 2. **Add vault** → choose your Obsidian folder → pick the remote → **Add vault**.
 3. Hit **Resync** once to establish the baseline. After that, it syncs automatically. 🎉
 
@@ -181,23 +181,27 @@ Checks for Node/npm, installs deps, builds icons, downloads rclone, and produces
 
 ### Linux build (AppImage + deb)
 
-**Recommended:** build on Linux or WSL with a **native** Node/npm (not Windows `node.exe` on PATH).
+**Verified on WSL2** with **Linux Node** (not `/mnt/c/Program Files/nodejs` — that breaks AppImage symlinks).
+
+```bash
+# From repo root, in WSL:
+bash scripts/wsl-build-linux.sh
+```
+
+One-time setup is automatic (portable Node under `~/.local/node-v22`). On native Linux or Deck:
 
 ```bash
 bash compile.sh
 ```
 
-On **Windows** you can cross-build the `.deb` after bundling a Linux rclone binary:
+**Outputs** (example v0.0.3):
 
-```bash
-node scripts/download-rclone.js   # run from WSL once, or copy linux rclone into resources/rclone/
-rm -rf release/linux-unpacked
-npm run build:linux
-```
+| Artifact | Typical size |
+|----------|----------------|
+| `release/Open Obsidian Sync-*-AppImage` | ~191 MB |
+| `release/open-obsidian-sync_*_amd64.deb` | ~152 MB |
 
-`AppImage` needs Linux (symlinks). Use `npm run build:linux-appimage` on Linux/WSL only.
-
-Artifacts land in `release/`.
+GitHub Actions (`.github/workflows/build-linux.yml`) builds the same targets on Ubuntu when you run the workflow or push a `v*` tag.
 
 Optional live Proton Drive check (credentials via env, never committed):
 
