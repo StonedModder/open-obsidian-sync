@@ -6,7 +6,10 @@ import path from "node:path";
 import {
   buildBackupConfigArgs,
   buildBisyncArgs,
+  DEFAULT_REMOTE_PREFIX,
   buildCreateRemoteArgs,
+  defaultRemotePathForVault,
+  ensureRemotePath,
   buildCryptArgs,
   buildDeleteRemoteArgs,
   buildRestoreConfigArgs,
@@ -370,6 +373,15 @@ const syncVault = async (vaultId: string, options: { resync?: boolean }): Promis
 
   try {
     const filters = writeFiltersFile(dataPath, vault);
+    await ensureRemotePath(
+      rclonePath,
+      vault,
+      (line) => {
+        if (interestingRcloneLine(line)) log(line.includes("ERROR") ? "error" : "info", line, vault.id);
+      },
+      rcloneConfigPath,
+      rcloneEnv()
+    );
     const args = buildBisyncArgs(vault, { resync }, filters, workDir);
     log("info", `${resync ? "First/resync" : "Sync"} started: ${remoteTarget(vault)}`, vault.id);
 
@@ -564,7 +576,7 @@ const buildVaultFromInput = (input: AddVaultInput): VaultConfig => {
     localPath: input.localPath,
     provider: input.provider,
     remote: input.remote.replace(/:$/, "").trim(),
-    remotePath: input.remotePath.trim() || `Obsidian/${path.basename(input.localPath)}`,
+    remotePath: input.remotePath.trim() || defaultRemotePathForVault(input.localPath, input.name),
     includeObsidianConfig: input.includeObsidianConfig,
     selectiveSync: input.selectiveSync ?? defaultSelectiveSync(),
     conflictStrategy: input.conflictStrategy ?? defaultConflictStrategy,
@@ -586,7 +598,7 @@ ipcMain.handle("vault:add-scanned", (_event, input: AddScannedInput): ApiResult<
   if (!input.paths.length) return { ok: false, error: "Select at least one vault to add." };
 
   const existing = new Set(store.snapshot.vaults.map((vault) => path.resolve(vault.localPath).toLowerCase()));
-  const prefix = normalizeRemotePath(input.remotePathPrefix) || "Obsidian";
+  const prefix = normalizeRemotePath(input.remotePathPrefix) || DEFAULT_REMOTE_PREFIX;
   let added = 0;
 
   for (const localPath of input.paths) {

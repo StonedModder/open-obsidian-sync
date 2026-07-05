@@ -4,6 +4,9 @@ const {
   buildBackupConfigArgs,
   buildBisyncArgs,
   buildCreateRemoteArgs,
+  buildMkdirArgs,
+  defaultRemotePathForVault,
+  remotePathSegmentsToCreate,
   buildCryptArgs,
   buildDeleteRemoteArgs,
   buildRestoreConfigArgs,
@@ -18,6 +21,7 @@ const {
   withRcloneConfig
 } = require("../dist/main/sync");
 const { defaultConflictStrategy } = require("../dist/shared/types");
+const { DEFAULT_REMOTE_PREFIX } = require("../dist/shared/remote-paths");
 const { rcloneAssetName, rcloneDownloadUrl, rcloneBinaryName } = require("../dist/main/rclone-install");
 
 const vault = {
@@ -183,5 +187,12 @@ const box = providers.find((p) => p.name === "box");
 assert.equal(box.oauth, true);
 assert.deepEqual(box.options.find((o) => o.name === "box_sub_type").examples, ["user", "enterprise"]);
 assert.equal(box.options.find((o) => o.name === "box_sub_type").exclusive, true);
+
+
+assert.deepEqual(remotePathSegmentsToCreate("open-obsidian-sync/ps-sdk"), ["open-obsidian-sync", "open-obsidian-sync/ps-sdk"]);
+assert.deepEqual(buildMkdirArgs("proton", "open-obsidian-sync/ps-sdk"), ["mkdir", "proton:open-obsidian-sync/ps-sdk"]);
+assert.deepEqual(buildMkdirArgs("proton:", "Obsidian/ps-sdk"), ["mkdir", "proton:Obsidian/ps-sdk"]);
+assert.equal(defaultRemotePathForVault("C:\Vaults\PS SDK", "PS SDK"), "open-obsidian-sync/ps-sdk");
+assert.equal(DEFAULT_REMOTE_PREFIX, "open-obsidian-sync");
 
 console.log("sync self-check passed");

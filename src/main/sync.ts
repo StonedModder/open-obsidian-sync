@@ -9,6 +9,8 @@ import {
   type VaultConfig
 } from "../shared/types";
 
+export { DEFAULT_REMOTE_PREFIX, defaultRemotePathForVault, vaultSlugFromName } from "../shared/remote-paths";
+
 export interface SyncRunOptions {
   resync?: boolean;
   dryRun?: boolean;
@@ -51,9 +53,51 @@ export const normalizeRemotePath = (remotePath: string): string =>
 
 export const remoteTarget = (vault: Pick<VaultConfig, "remote" | "remotePath">): string => {
   const folder = normalizeRemotePath(vault.remotePath);
-  return folder ? `${vault.remote}:${folder}` : `${vault.remote}:`;
+  const remote = vault.remote.replace(/:$/, "").trim();
+  return folder ? `${remote}:${folder}` : `${remote}:`;
 };
 
+/** Cumulative folder paths under a remote (a/b/c → a, a/b, a/b/c). */
+export const remotePathSegmentsToCreate = (remotePath: string): string[] => {
+  const normalized = normalizeRemotePath(remotePath);
+  if (!normalized) return [];
+
+  const parts = normalized.split("/").filter(Boolean);
+  const segments: string[] = [];
+  let acc = "";
+  for (const part of parts) {
+    acc = acc ? `${acc}/${part}` : part;
+    segments.push(acc);
+  }
+  return segments;
+};
+
+export const buildMkdirArgs = (remote: string, folderSegment: string): string[] => {
+  const remoteName = remote.replace(/:$/, "").trim();
+  const folder = normalizeRemotePath(folderSegment);
+  const target = folder ? `${remoteName}:${folder}` : `${remoteName}:`;
+  return ["mkdir", target];
+};
+
+export const ensureRemotePath = async (
+  executable: string,
+  vault: Pick<VaultConfig, "remote" | "remotePath">,
+  onLine: (line: string) => void,
+  configPath?: string,
+  env?: NodeJS.ProcessEnv
+): Promise<void> => {
+  const remote = vault.remote.replace(/:$/, "").trim();
+  const segments = remotePathSegmentsToCreate(vault.remotePath);
+
+  for (const segment of segments) {
+    const result = await runRclone(executable, buildMkdirArgs(remote, segment), onLine, configPath, env);
+    if (result.code !== 0) {
+      const lines = result.output.trim().split(String.fromCharCode(10));
+      const message = lines.slice(-4).join(String.fromCharCode(10)) || `rclone mkdir failed with code ${result.code}`;
+      throw new Error(message);
+    }
+  }
+};
 export const filterLinesForVault = (
   vault: Pick<VaultConfig, "includeObsidianConfig" | "excludePatterns"> & Partial<Pick<VaultConfig, "selectiveSync">>
 ): string[] => {

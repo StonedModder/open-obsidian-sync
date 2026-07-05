@@ -45,6 +45,7 @@ import {
   type SelectiveSyncSettings,
   type VaultConfig
 } from "../shared/types";
+import { DEFAULT_REMOTE_PREFIX, defaultRemotePathForVault } from "../shared/remote-paths";
 
 type PanelTab = "cloud" | "add" | "settings";
 type ToastKind = "info" | "success" | "warning" | "error" | "progress";
@@ -1596,7 +1597,7 @@ function AddVaultPanel({
     localPath: "",
     provider: "google-drive",
     remote: "",
-    remotePath: "Obsidian/My Vault",
+    remotePath: defaultRemotePathForVault(""),
     includeObsidianConfig: true,
     selectiveSync: defaultSelectiveSync(),
     conflictStrategy: defaultConflictStrategy,
@@ -1643,7 +1644,7 @@ function AddVaultPanel({
       paths,
       provider: input.provider,
       remote: input.remote,
-      remotePathPrefix: "Obsidian",
+      remotePathPrefix: DEFAULT_REMOTE_PREFIX,
       includeObsidianConfig: input.includeObsidianConfig,
       selectiveSync: input.selectiveSync,
       conflictStrategy: input.conflictStrategy,
@@ -1732,7 +1733,18 @@ function AddVaultPanel({
               title="Choose vault folder"
               onClick={async () => {
                 const result = await window.openObsidianSync.chooseVault();
-                if (result.ok && result.value) set("localPath", result.value);
+                if (result.ok && result.value) {
+                  setInput((current) => ({
+                    ...current,
+                    localPath: result.value!,
+                    remotePath:
+                      !current.remotePath ||
+                      current.remotePath === defaultRemotePathForVault("") ||
+                      current.remotePath.startsWith("Obsidian/")
+                        ? defaultRemotePathForVault(result.value!)
+                        : current.remotePath
+                  }));
+                }
                 else setNotice(result.error);
               }}
             >
@@ -1777,7 +1789,7 @@ function AddVaultPanel({
         </label>
 
         <label className="label text-[12px]">
-          <FieldLabel label="Remote folder" tip="Path inside the remote where this vault is stored, e.g. Obsidian/My Vault. Created automatically if it doesn't exist." />
+          <FieldLabel label="Remote folder" tip="Path inside the remote where this vault is stored, e.g. open-obsidian-sync/my-vault. Created automatically before sync if it doesn't exist." />
           <input className="field mono text-[12px]" value={input.remotePath} onChange={(event) => set("remotePath", event.target.value)} />
         </label>
 
