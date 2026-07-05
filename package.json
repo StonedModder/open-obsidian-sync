@@ -8,6 +8,7 @@
     "email": "openobsidiansync@users.noreply.github.com"
   },
   "license": "MIT",
+  "desktopName": "open-obsidian-sync",
   "scripts": {
     "dev": "npm run build && electron .",
     "start": "npm run build && electron .",
@@ -47,7 +48,6 @@
   "build": {
     "appId": "dev.openobsidiansync.app",
     "productName": "Open Obsidian Sync",
-    "desktopName": "open-obsidian-sync",
     "directories": {
       "output": "release"
     },

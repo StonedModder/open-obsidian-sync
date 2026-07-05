@@ -117,6 +117,22 @@ export interface CreateCryptInput {
   password2?: string;
 }
 
+export interface RemoteVaultLink {
+  vaultId: string;
+  vaultName: string;
+  remotePath: string;
+  status: VaultStatus;
+  lastSyncedAt?: string;
+  lastError?: string;
+}
+
+export interface RemoteSummary {
+  name: string;
+  type: string;
+  typeLabel: string;
+  vaults: RemoteVaultLink[];
+}
+
 export interface BackupInput {
   remote: string;
   remotePath: string;

@@ -7,6 +7,7 @@ import type {
   CreateCryptInput,
   CreateRemoteInput,
   ProviderInfo,
+  RemoteSummary,
   ScanResult,
   VaultConfig
 } from "./types";
@@ -27,6 +28,8 @@ export interface OpenObsidianSyncApi {
   openRcloneConfig: () => Promise<ApiResult<string>>;
   installRclone: () => Promise<ApiResult>;
   listRcloneRemotes: () => Promise<ApiResult<string[]>>;
+  listRemoteSummaries: () => Promise<ApiResult<RemoteSummary[]>>;
+  testRemote: (name: string) => Promise<ApiResult<string>>;
   listProviders: () => Promise<ApiResult<ProviderInfo[]>>;
   createRemote: (input: CreateRemoteInput) => Promise<ApiResult<string>>;
   createCryptRemote: (input: CreateCryptInput) => Promise<ApiResult<string>>;

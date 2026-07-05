@@ -38,6 +38,7 @@ import {
   type ConflictStrategy,
   type Provider,
   type ProviderInfo,
+  type RemoteSummary,
   type ScanResult,
   type SelectiveSyncSettings,
   type VaultConfig
@@ -606,7 +607,7 @@ function RightPanel({
         ))}
       </div>
 
-      {tab === "cloud" && <CloudSetup appState={appState} setNotice={setNotice} />}
+      {tab === "cloud" && <CloudSetup appState={appState} setNotice={setNotice} goToAddVault={() => setTab("add")} />}
       {tab === "add" && <AddVaultPanel setNotice={setNotice} onAdded={() => setTab("settings")} goToCloud={() => setTab("cloud")} />}
       {tab === "settings" && selectedVault && <VaultSettings vault={selectedVault} setNotice={setNotice} />}
     </div>
@@ -699,23 +700,36 @@ function SectionHead({ icon, title, note }: { icon: JSX.Element; title: string; 
   );
 }
 
-function CloudSetup({ appState, setNotice }: { appState: AppState; setNotice: (notice?: string) => void }) {
-  const [sub, setSub] = useState<"create" | "secure" | "backup">("create");
+function CloudSetup({
+  appState,
+  setNotice,
+  goToAddVault
+}: {
+  appState: AppState;
+  setNotice: (notice?: string, kind?: ToastKind) => void;
+  goToAddVault: () => void;
+}) {
+  const [sub, setSub] = useState<"connections" | "create" | "secure" | "backup">("connections");
+  const [highlightRemote, setHighlightRemote] = useState<string | undefined>();
 
   return (
     <div className="panel p-4">
-      <SectionHead icon={<Cloud />} title="Cloud setup" note="Connect providers, add encryption, and back up your setup — no terminal needed." />
+      <SectionHead
+        icon={<Cloud />}
+        title="Cloud setup"
+        note="See every connection, its health, and which vaults sync through it — then add providers when you need more."
+      />
       <div className="mono mb-3 break-all rounded bg-[var(--obsidian)] px-2.5 py-1.5 text-[10.5px] text-[var(--faint)]">
         {appState.rcloneConfigPath}
       </div>
 
       <RcloneStatus appState={appState} setNotice={setNotice} />
 
-
       <div className="seg mb-3">
         {(
           [
-            ["create", "Remotes"],
+            ["connections", "Connections"],
+            ["create", "Add new"],
             ["secure", "Encrypt"],
             ["backup", "Backup"]
           ] as const
@@ -726,7 +740,25 @@ function CloudSetup({ appState, setNotice }: { appState: AppState; setNotice: (n
         ))}
       </div>
 
-      {sub === "create" && <CreateRemote setNotice={setNotice} />}
+      {sub === "connections" && (
+        <ConnectionsPanel
+          appState={appState}
+          setNotice={setNotice}
+          highlightRemote={highlightRemote}
+          onClearHighlight={() => setHighlightRemote(undefined)}
+          goToAddVault={goToAddVault}
+          onGoCreate={() => setSub("create")}
+        />
+      )}
+      {sub === "create" && (
+        <CreateRemote
+          setNotice={setNotice}
+          onCreated={(name) => {
+            setHighlightRemote(name);
+            setSub("connections");
+          }}
+        />
+      )}
       {sub === "secure" && <SecureBox appState={appState} setNotice={setNotice} />}
       {sub === "backup" && <BackupBox setNotice={setNotice} />}
 
@@ -739,6 +771,194 @@ function CloudSetup({ appState, setNotice }: { appState: AppState; setNotice: (n
       >
         <Terminal className="h-3.5 w-3.5" />
         Advanced CLI
+      </button>
+    </div>
+  );
+}
+
+function ConnectionsPanel({
+  appState,
+  setNotice,
+  highlightRemote,
+  onClearHighlight,
+  goToAddVault,
+  onGoCreate
+}: {
+  appState: AppState;
+  setNotice: (notice?: string, kind?: ToastKind) => void;
+  highlightRemote?: string;
+  onClearHighlight: () => void;
+  goToAddVault: () => void;
+  onGoCreate: () => void;
+}) {
+  const [summaries, setSummaries] = useState<RemoteSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [health, setHealth] = useState<Record<string, { state: "idle" | "testing" | "ok" | "error"; message?: string }>>({});
+
+  const refresh = async () => {
+    setLoading(true);
+    const result = await window.openObsidianSync.listRemoteSummaries();
+    if (result.ok) setSummaries(result.value ?? []);
+    else setNotice(result.error);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    void refresh();
+  }, [appState.vaults]);
+
+  const testOne = async (name: string, quiet = false) => {
+    setHealth((current) => ({ ...current, [name]: { state: "testing" } }));
+    const result = await window.openObsidianSync.testRemote(name);
+    setHealth((current) => ({
+      ...current,
+      [name]: result.ok ? { state: "ok", message: result.value } : { state: "error", message: result.error }
+    }));
+    if (!quiet) {
+      if (result.ok) setNotice(result.value, "success");
+      else setNotice(result.error);
+    }
+  };
+
+  useEffect(() => {
+    if (!highlightRemote) return;
+    void testOne(highlightRemote, true);
+    const timer = setTimeout(onClearHighlight, 8000);
+    return () => clearTimeout(timer);
+  }, [highlightRemote]);
+
+  if (loading && summaries.length === 0) {
+    return <div className="py-6 text-center text-[12px] text-[var(--faint)]">Loading cloud connections…</div>;
+  }
+
+  if (summaries.length === 0) {
+    return (
+      <div className="rounded border border-dashed border-[var(--hairline)] px-4 py-8 text-center">
+        <Cloud className="mx-auto mb-3 h-8 w-8 text-[var(--ember)] opacity-80" />
+        <div className="text-[13px] text-[var(--bone-dim)]">No cloud connections yet</div>
+        <p className="mx-auto mt-2 max-w-[260px] text-[11px] leading-5 text-[var(--muted)]">
+          Add Proton Drive, Google Drive, or any rclone provider. You&apos;ll see status and synced vaults here.
+        </p>
+        <button className="btn-ember mx-auto mt-4 h-9 px-4" onClick={onGoCreate}>
+          <PlusCircle className="h-3.5 w-3.5" />
+          Add cloud provider
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="eyebrow">
+          {summaries.length} connection{summaries.length === 1 ? "" : "s"}
+        </span>
+        <button className="icon-btn" title="Refresh" onClick={() => void refresh()}>
+          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+        </button>
+      </div>
+
+      {summaries.map((remote) => {
+        const h = health[remote.name];
+        const highlighted = highlightRemote === remote.name;
+        return (
+          <div
+            key={remote.name}
+            className={`rounded border bg-[var(--obsidian)] p-3 ${highlighted ? "border-[var(--ember-line)] shadow-[0_0_0_1px_var(--ember-soft)]" : "border-[var(--hairline-soft)]"}`}
+          >
+            <div className="mb-2 flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="truncate text-[14px] font-medium text-[var(--bone)]">{remote.name}</div>
+                <div className="mono mt-0.5 text-[10.5px] text-[var(--faint)]">{remote.typeLabel}</div>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <button className="icon-btn" title="Test connection" onClick={() => void testOne(remote.name)}>
+                  <RefreshCw className={`h-3.5 w-3.5 ${h?.state === "testing" ? "animate-spin" : ""}`} />
+                </button>
+                <button
+                  className="icon-btn"
+                  title={`Delete ${remote.name}`}
+                  onClick={async () => {
+                    const result = await window.openObsidianSync.deleteRemote(remote.name);
+                    setNotice(result.ok ? `Remote "${remote.name}" deleted.` : result.error);
+                    void refresh();
+                  }}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="mb-2.5 flex flex-wrap items-center gap-2 text-[11px]">
+              {h?.state === "testing" && (
+                <span className="status-pill status-syncing">
+                  <span className="dot pulse" />
+                  Testing…
+                </span>
+              )}
+              {h?.state === "ok" && (
+                <span className="status-pill status-synced">
+                  <CheckCircle2 className="h-3 w-3" />
+                  Reachable
+                </span>
+              )}
+              {h?.state === "error" && (
+                <span className="status-pill status-error" title={h.message}>
+                  <AlertTriangle className="h-3 w-3" />
+                  Connection issue
+                </span>
+              )}
+              {!h && (
+                <span className="mono text-[10px] text-[var(--faint)]">Tap ↻ to test cloud login</span>
+              )}
+            </div>
+            {h?.state === "error" && h.message && (
+              <pre className="mono mb-2 max-h-20 overflow-auto whitespace-pre-wrap text-[10px] text-[var(--clay)]">{h.message}</pre>
+            )}
+
+            <div className="border-t border-[var(--hairline-soft)] pt-2.5">
+              <div className="eyebrow mb-1.5">Vaults on this remote</div>
+              {remote.vaults.length === 0 ? (
+                <div className="space-y-2">
+                  <p className="text-[11px] leading-5 text-[var(--muted)]">Nothing syncing yet. Add a vault and pick this remote.</p>
+                  <button className="btn h-8 w-full text-[11px]" onClick={goToAddVault}>
+                    <Plus className="h-3.5 w-3.5" />
+                    Add vault
+                  </button>
+                </div>
+              ) : (
+                <ul className="space-y-1.5">
+                  {remote.vaults.map((vault) => (
+                    <li
+                      key={vault.vaultId}
+                      className="flex items-start justify-between gap-2 rounded border border-[var(--hairline-soft)] px-2 py-1.5 text-[11px]"
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate font-medium text-[var(--bone-dim)]">{vault.vaultName}</div>
+                        <div className="mono truncate text-[10px] text-[var(--faint)]">{vault.remotePath}</div>
+                        <div className="mono mt-0.5 text-[10px] text-[var(--faint)]">Last sync: {fmt(vault.lastSyncedAt)}</div>
+                        {vault.lastError && (
+                          <div className="mt-1 text-[10px] text-[var(--clay)]" title={vault.lastError}>
+                            Sync error — open vault for details
+                          </div>
+                        )}
+                      </div>
+                      <span className={`status-pill shrink-0 ${statusClass(vault.status)}`}>
+                        <span className={`dot ${vault.status === "syncing" ? "pulse" : ""}`} />
+                        {vault.status}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        );
+      })}
+
+      <button className="btn h-9 w-full" onClick={onGoCreate}>
+        <PlusCircle className="h-3.5 w-3.5" />
+        Add another provider
       </button>
     </div>
   );
@@ -878,7 +1098,7 @@ function CreateRemote({
   const setField = (key: string, value: string) => setFieldValues((current) => ({ ...current, [key]: value }));
 
   const done = (remoteName: string) => {
-    setNotice(`Remote "${remoteName}" created. It's now selectable when adding a vault.`, "success");
+    setNotice(`Remote "${remoteName}" added — see Connections for status and synced vaults.`, "success");
     void refresh();
     onCreated?.(remoteName);
   };
@@ -1060,28 +1280,9 @@ function CreateRemote({
             : `Connect ${dynamic ? dynamic.description : (kind?.label ?? "").split(" / ")[0]}`}
       </button>
 
-      {remotes.length > 0 && (
-        <div className="pt-1">
-          <div className="eyebrow mb-1.5">Connected remotes</div>
-          <div className="flex flex-wrap gap-1.5">
-            {remotes.map((remote) => (
-              <span key={remote} className="chip">
-                {remote}
-                <button
-                  title={`Delete ${remote}`}
-                  onClick={async () => {
-                    const result = await window.openObsidianSync.deleteRemote(remote);
-                    setNotice(result.ok ? `Remote "${remote}" deleted.` : result.error);
-                    void refresh();
-                  }}
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
+      <p className="pt-2 text-center text-[10.5px] leading-5 text-[var(--faint)]">
+        After connecting, open the <strong className="text-[var(--muted)]">Connections</strong> tab to see status and vaults.
+      </p>
     </div>
   );
 }

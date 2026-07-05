@@ -20,6 +20,7 @@ import {
   writeFiltersFile
 } from "./sync";
 import { ensureRclone, formatBytes, resolveExistingRclone } from "./rclone-install";
+import { parseRemoteTypes, remoteTypeLabel } from "./rclone-config";
 import { legacyDataDirs, resolveDataPath } from "./paths";
 import { JsonStore } from "./store";
 import {
@@ -34,6 +35,7 @@ import {
   type CreateRemoteInput,
   type LogLevel,
   type ProviderInfo,
+  type RemoteSummary,
   type ScanResult,
   type VaultConfig
 } from "../shared/types";
@@ -695,6 +697,54 @@ ipcMain.handle("rclone:list-remotes", async (): Promise<ApiResult<string[]>> => 
       return { ok: false, error: result.output || "Unable to list remotes." };
     }
     return { ok: true, value };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle("rclone:list-remote-summaries", async (): Promise<ApiResult<RemoteSummary[]>> => {
+  try {
+    const result = await runRclone(rclonePath, ["listremotes"], () => undefined, rcloneConfigPath, rcloneEnv());
+    const names = result.output
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.endsWith(":"))
+      .map((line) => line.replace(/:$/, ""));
+    if (result.code !== 0 && names.length === 0 && !/not found|no such file|using defaults/i.test(result.output)) {
+      return { ok: false, error: result.output || "Unable to list remotes." };
+    }
+    const types = parseRemoteTypes(rcloneConfigPath);
+    const summaries: RemoteSummary[] = names.map((name) => ({
+      name,
+      type: types[name] ?? "unknown",
+      typeLabel: remoteTypeLabel(types[name]),
+      vaults: store.snapshot.vaults
+        .filter((vault) => vault.remote === name)
+        .map((vault) => ({
+          vaultId: vault.id,
+          vaultName: vault.name,
+          remotePath: vault.remotePath,
+          status: vault.status,
+          lastSyncedAt: vault.lastSyncedAt,
+          lastError: vault.lastError
+        }))
+    }));
+    return { ok: true, value: summaries };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle("rclone:test-remote", async (_event, name: string): Promise<ApiResult<string>> => {
+  try {
+    const remote = name.replace(/:$/, "").trim();
+    if (!remote) return { ok: false, error: "Remote name is required." };
+    const probe = await runRclone(rclonePath, ["lsd", `${remote}:`], () => undefined, rcloneConfigPath, rcloneEnv());
+    if (probe.code !== 0) {
+      const msg = probe.output.trim() || "Could not reach this remote.";
+      return { ok: false, error: msg };
+    }
+    return { ok: true, value: "Connected — cloud root is reachable." };
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }

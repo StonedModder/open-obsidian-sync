@@ -19,10 +19,13 @@ export const resolveDataPath = ({ userDataPath, env }: DataPathInput) => {
 
 // Older builds kept data next to the portable exe. List those legacy locations
 // so their config can be migrated into the new stable folder on first run.
+const isWindowsStylePath = (value: string) => /^[A-Za-z]:[\\/]/.test(value) || value.includes("\\");
+
 export const legacyDataDirs = (env: NodeJS.ProcessEnv): string[] => {
   const dirs: string[] = [];
   if (env.PORTABLE_EXECUTABLE_DIR) {
-    dirs.push(path.join(env.PORTABLE_EXECUTABLE_DIR, "open-obsidian-sync-data"));
+    const join = isWindowsStylePath(env.PORTABLE_EXECUTABLE_DIR) ? path.win32.join : path.join;
+    dirs.push(join(env.PORTABLE_EXECUTABLE_DIR, "open-obsidian-sync-data"));
   }
   return dirs;
 };
