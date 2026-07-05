@@ -10,17 +10,17 @@ import {
   buildCryptArgs,
   buildDeleteRemoteArgs,
   buildRestoreConfigArgs,
+  buildUpdateRemoteArgs,
   defaultSelectiveSync,
   launchRcloneConfig,
   normalizeRemotePath,
-  obscureArgs,
   parseProviders,
   remoteTarget,
   runRclone,
   writeFiltersFile
 } from "./sync";
 import { ensureRclone, formatBytes, resolveExistingRclone } from "./rclone-install";
-import { parseRemoteTypes, remoteTypeLabel } from "./rclone-config";
+import { isSensitiveRemoteOption, parseRemoteSection, parseRemoteTypes, remoteTypeLabel, removeKeysFromRemoteSection } from "./rclone-config";
 import { legacyDataDirs, resolveDataPath } from "./paths";
 import { JsonStore } from "./store";
 import {
@@ -35,8 +35,10 @@ import {
   type CreateRemoteInput,
   type LogLevel,
   type ProviderInfo,
+  type RemoteEditInfo,
   type RemoteSummary,
   type ScanResult,
+  type UpdateRemoteInput,
   type VaultConfig
 } from "../shared/types";
 
@@ -750,6 +752,54 @@ ipcMain.handle("rclone:test-remote", async (_event, name: string): Promise<ApiRe
   }
 });
 
+ipcMain.handle("rclone:get-remote-edit", async (_event, name: string): Promise<ApiResult<RemoteEditInfo>> => {
+  try {
+    const remote = name.replace(/:$/, "").trim();
+    if (!remote) return { ok: false, error: "Remote name is required." };
+    const types = parseRemoteTypes(rcloneConfigPath);
+    const type = types[remote];
+    if (!type) return { ok: false, error: `Remote "${remote}" not found in rclone config.` };
+    const section = parseRemoteSection(rcloneConfigPath, remote);
+    const publicOptions: Record<string, string> = {};
+    for (const [key, value] of Object.entries(section)) {
+      if (key === "type") continue;
+      if (!isSensitiveRemoteOption(key)) publicOptions[key] = value;
+    }
+    return { ok: true, value: { name: remote, type, typeLabel: remoteTypeLabel(type), publicOptions } };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
+ipcMain.handle("rclone:update-remote", async (_event, input: UpdateRemoteInput): Promise<ApiResult<string>> => {
+  try {
+    const name = input.name.replace(/:$/, "").trim();
+    if (!name) return { ok: false, error: "Remote name is required." };
+    const options: Record<string, string> = {};
+    for (const [key, value] of Object.entries(input.options ?? {})) {
+      const trimmed = String(value ?? "").trim();
+      if (trimmed) options[key] = trimmed;
+    }
+    if (Object.keys(options).length === 0) return { ok: false, error: "Enter at least one field to update." };
+
+    const types = parseRemoteTypes(rcloneConfigPath);
+    if (types[name] === "protondrive") {
+      removeKeysFromRemoteSection(rcloneConfigPath, name, (key) => /^client_/i.test(key));
+    }
+
+    const obscureKeys = input.obscureKeys ?? [];
+    const useObscure = obscureKeys.some((key) => options[key]);
+    log("info", `Updating credentials for remote "${name}"`);
+    const result = await runRcloneCommand(buildUpdateRemoteArgs(name, options, useObscure));
+    if (result.code !== 0) return { ok: false, error: result.output.trim() || "rclone could not update the remote." };
+    log("success", `Remote "${name}" credentials updated`);
+    sendState();
+    return { ok: true, value: name };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
+
 const runRcloneCommand = async (args: string[]): Promise<{ code: number; output: string }> =>
   runRclone(rclonePath, args, (line) => log("info", line), rcloneConfigPath, rcloneEnv());
 
@@ -777,12 +827,10 @@ ipcMain.handle("rclone:create-remote", async (_event, input: CreateRemoteInput):
     if (!input.name.trim() || !input.type.trim()) return { ok: false, error: "Remote name and type are required." };
     const name = input.name.replace(/:$/, "").trim();
     const options: Record<string, string> = { ...(input.options ?? {}) };
-    // rclone stores passwords obscured; obscure the requested keys before saving.
-    for (const key of input.obscureKeys ?? []) {
-      if (options[key]) options[key] = await captureRclone(obscureArgs(options[key]));
-    }
+    const obscureKeys = input.obscureKeys ?? [];
+    const useObscure = obscureKeys.some((key) => options[key]);
     log("info", `Creating remote "${name}" (${input.type}). A browser may open to authorize.`);
-    const result = await runRcloneCommand(buildCreateRemoteArgs(name, input.type.trim(), options, input.oauth));
+    const result = await runRcloneCommand(buildCreateRemoteArgs(name, input.type.trim(), options, input.oauth, useObscure));
     if (result.code !== 0) return { ok: false, error: result.output.trim() || "rclone could not create the remote." };
     log("success", `Remote "${name}" created`);
     sendState();
@@ -800,11 +848,9 @@ ipcMain.handle("rclone:create-crypt", async (_event, input: CreateCryptInput): P
 
     const folder = normalizeRemotePath(input.basePath);
     const baseTarget = folder ? `${base}:${folder}` : `${base}:`;
-    const password = await captureRclone(obscureArgs(input.password));
-    const password2 = input.password2 ? await captureRclone(obscureArgs(input.password2)) : undefined;
 
     log("info", `Creating encrypted remote "${name}" over ${baseTarget}`);
-    const result = await runRcloneCommand(buildCryptArgs(name, baseTarget, password, password2));
+    const result = await runRcloneCommand(buildCryptArgs(name, baseTarget, input.password, input.password2?.trim() || undefined));
     if (result.code !== 0) return { ok: false, error: result.output.trim() || "rclone could not create the crypt remote." };
     log("success", `Encrypted remote "${name}" created`);
     sendState();

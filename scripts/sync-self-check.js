@@ -7,6 +7,7 @@ const {
   buildCryptArgs,
   buildDeleteRemoteArgs,
   buildRestoreConfigArgs,
+  buildUpdateRemoteArgs,
   conflictSuffix,
   defaultSelectiveSync,
   filterLinesForVault,
@@ -92,7 +93,7 @@ assert.deepEqual(buildCreateRemoteArgs("proton", "protondrive", { username: "me"
 ]);
 assert.deepEqual(obscureArgs("hunter2"), ["obscure", "hunter2"]);
 const cryptArgs = buildCryptArgs("secure", "gdrive:Vault", "OBS1", "OBS2");
-assert.deepEqual(cryptArgs, ["config", "create", "secure", "crypt", "remote=gdrive:Vault", "password=OBS1", "password2=OBS2", "--non-interactive"]);
+assert.deepEqual(cryptArgs, ["config", "create", "secure", "crypt", "remote=gdrive:Vault", "password=OBS1", "password2=OBS2", "--non-interactive", "--obscure"]);
 assert.deepEqual(buildCryptArgs("secure", "gdrive:Vault", "OBS1"), [
   "config",
   "create",
@@ -100,7 +101,26 @@ assert.deepEqual(buildCryptArgs("secure", "gdrive:Vault", "OBS1"), [
   "crypt",
   "remote=gdrive:Vault",
   "password=OBS1",
-  "--non-interactive"
+  "--non-interactive",
+  "--obscure"
+]);
+assert.deepEqual(buildCreateRemoteArgs("proton", "protondrive", { password: "x" }, false, true), [
+  "config",
+  "create",
+  "proton",
+  "protondrive",
+  "password=x",
+  "--non-interactive",
+  "--obscure"
+]);
+assert.deepEqual(buildUpdateRemoteArgs("proton", { password: "new", username: "me@pm.me" }, true), [
+  "config",
+  "update",
+  "proton",
+  "password=new",
+  "username=me@pm.me",
+  "--non-interactive",
+  "--obscure"
 ]);
 assert.deepEqual(buildDeleteRemoteArgs("gdrive"), ["config", "delete", "gdrive"]);
 const backup = buildBackupConfigArgs("C:\\Data", "gdrive:backup");

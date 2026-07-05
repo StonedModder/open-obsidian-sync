@@ -9,8 +9,10 @@ import type {
   CreateCryptInput,
   CreateRemoteInput,
   ProviderInfo,
+  RemoteEditInfo,
   RemoteSummary,
   ScanResult,
+  UpdateRemoteInput,
   VaultConfig
 } from "../shared/types";
 
@@ -36,6 +38,8 @@ const api: OpenObsidianSyncApi = {
   listRcloneRemotes: (): Promise<ApiResult<string[]>> => ipcRenderer.invoke("rclone:list-remotes"),
   listRemoteSummaries: (): Promise<ApiResult<RemoteSummary[]>> => ipcRenderer.invoke("rclone:list-remote-summaries"),
   testRemote: (name: string): Promise<ApiResult<string>> => ipcRenderer.invoke("rclone:test-remote", name),
+  getRemoteForEdit: (name: string): Promise<ApiResult<RemoteEditInfo>> => ipcRenderer.invoke("rclone:get-remote-edit", name),
+  updateRemote: (input: UpdateRemoteInput): Promise<ApiResult<string>> => ipcRenderer.invoke("rclone:update-remote", input),
   listProviders: (): Promise<ApiResult<ProviderInfo[]>> => ipcRenderer.invoke("rclone:list-providers"),
   createRemote: (input: CreateRemoteInput): Promise<ApiResult<string>> => ipcRenderer.invoke("rclone:create-remote", input),
   createCryptRemote: (input: CreateCryptInput): Promise<ApiResult<string>> => ipcRenderer.invoke("rclone:create-crypt", input),

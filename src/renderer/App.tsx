@@ -15,6 +15,7 @@ import {
   KeyRound,
   Lock,
   Pause,
+  Pencil,
   Play,
   Plus,
   PlusCircle,
@@ -38,6 +39,7 @@ import {
   type ConflictStrategy,
   type Provider,
   type ProviderInfo,
+  type RemoteEditInfo,
   type RemoteSummary,
   type ScanResult,
   type SelectiveSyncSettings,
@@ -678,7 +680,7 @@ const remoteKinds: RemoteKind[] = [
     fields: [
       { key: "provider", label: "Provider", tip: "S3 provider name, e.g. AWS, Wasabi, Cloudflare, Minio, Other.", placeholder: "AWS" },
       { key: "access_key_id", label: "Access key ID", tip: "Your S3 access key ID." },
-      { key: "secret_access_key", label: "Secret access key", tip: "Your S3 secret access key.", password: true },
+      { key: "secret_access_key", label: "Secret access key", tip: "Your S3 secret access key.", password: true, obscure: true },
       { key: "region", label: "Region", tip: "Bucket region, e.g. us-east-1. Optional for some providers.", optional: true, placeholder: "us-east-1" },
       { key: "endpoint", label: "Endpoint", tip: "Custom S3 endpoint URL. Required for non-AWS providers like Wasabi or R2.", optional: true, placeholder: "s3.wasabisys.com" }
     ]
@@ -687,6 +689,124 @@ const remoteKinds: RemoteKind[] = [
 ];
 
 const curatedTypes = new Set(remoteKinds.map((option) => option.type));
+
+function remoteKindFields(type: string): RemoteField[] | undefined {
+  return remoteKinds.find((entry) => entry.type === type && entry.kind === "fields")?.fields;
+}
+
+function protonAuthHelp(message: string): string | null {
+  if (!/password is not correct|Incorrect login credentials|Code=8002/i.test(message)) return null;
+  return "Proton rejected sign-in. Use your account login password (mailbox password only for legacy two-password accounts). For app 2FA, use the TOTP secret key — not a one-time code. Re-type the password via Edit credentials if it contains special characters.";
+}
+
+function EditRemoteCredentials({
+  name,
+  setNotice,
+  onSaved,
+  onCancel
+}: {
+  name: string;
+  setNotice: (notice?: string, kind?: ToastKind) => void;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
+  const [info, setInfo] = useState<RemoteEditInfo | null>(null);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      const result = await window.openObsidianSync.getRemoteForEdit(name);
+      if (!result.ok) {
+        setNotice(result.error);
+        onCancel();
+        return;
+      }
+      const fields = remoteKindFields(result.value.type);
+      if (!fields) {
+        setNotice("This connection type cannot be edited here. Use Advanced rclone config or delete and add again.");
+        onCancel();
+        return;
+      }
+      setInfo(result.value);
+      const init: Record<string, string> = {};
+      for (const field of fields) {
+        init[field.key] = result.value.publicOptions[field.key] ?? "";
+      }
+      setValues(init);
+    })();
+  }, [name]);
+
+  const fields = info ? remoteKindFields(info.type) : undefined;
+  if (!info || !fields) {
+    return <div className="py-2 text-center text-[11px] text-[var(--faint)]">Loading credentials form…</div>;
+  }
+
+  const save = async () => {
+    const options: Record<string, string> = {};
+    for (const field of fields) {
+      const value = values[field.key]?.trim() ?? "";
+      if (!value) continue;
+      if (field.password && !field.optional && !values[field.key]?.trim() && !info.publicOptions[field.key]) {
+        continue;
+      }
+      options[field.key] = value;
+    }
+    if (Object.keys(options).length === 0) {
+      setNotice("Enter at least one field to update (password fields can be left blank to keep the current value).");
+      return;
+    }
+    const obscureKeys = fields.filter((field) => field.obscure || field.password).map((field) => field.key);
+    setSaving(true);
+    const result = await window.openObsidianSync.updateRemote({ name: info.name, options, obscureKeys });
+    setSaving(false);
+    if (!result.ok) {
+      setNotice(result.error);
+      return;
+    }
+    setNotice(`Credentials updated for "${info.name}". Testing connection…`, "success");
+    onSaved();
+  };
+
+  return (
+    <div className="mb-3 rounded border border-[var(--ember-line)] bg-[var(--ember-soft)]/40 p-2.5">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="eyebrow text-[var(--bone-dim)]">Edit credentials</span>
+        <button className="icon-btn" title="Cancel" onClick={onCancel}>
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <p className="mb-2 text-[10.5px] leading-5 text-[var(--muted)]">
+        Secrets are never shown. Leave password fields blank to keep the current value.
+      </p>
+      <div className="space-y-2">
+        {fields.map((field) => (
+          <label key={field.key} className="block">
+            <span className="mb-0.5 block text-[10.5px] text-[var(--faint)]">{field.label}</span>
+            <input
+              className="input h-8 w-full text-[12px]"
+              type={field.password ? "password" : "text"}
+              placeholder={
+                field.password
+                  ? field.optional
+                    ? "Leave blank to keep current"
+                    : info.publicOptions[field.key]
+                      ? "Leave blank to keep current"
+                      : field.placeholder
+                  : field.placeholder
+              }
+              value={values[field.key] ?? ""}
+              onChange={(event) => setValues((current) => ({ ...current, [field.key]: event.target.value }))}
+            />
+          </label>
+        ))}
+      </div>
+      <button className="btn-ember mt-2.5 h-8 w-full text-[11px]" disabled={saving} onClick={() => void save()}>
+        {saving ? "Saving…" : "Save credentials"}
+      </button>
+    </div>
+  );
+}
 
 function SectionHead({ icon, title, note }: { icon: JSX.Element; title: string; note: string }) {
   return (
@@ -794,6 +914,7 @@ function ConnectionsPanel({
   const [summaries, setSummaries] = useState<RemoteSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [health, setHealth] = useState<Record<string, { state: "idle" | "testing" | "ok" | "error"; message?: string }>>({});
+  const [editingRemote, setEditingRemote] = useState<string | null>(null);
 
   const refresh = async () => {
     setLoading(true);
@@ -872,6 +993,15 @@ function ConnectionsPanel({
                 <div className="mono mt-0.5 text-[10.5px] text-[var(--faint)]">{remote.typeLabel}</div>
               </div>
               <div className="flex shrink-0 items-center gap-1">
+                {remoteKindFields(remote.type) && (
+                  <button
+                    className="icon-btn"
+                    title="Edit credentials"
+                    onClick={() => setEditingRemote(editingRemote === remote.name ? null : remote.name)}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                )}
                 <button className="icon-btn" title="Test connection" onClick={() => void testOne(remote.name)}>
                   <RefreshCw className={`h-3.5 w-3.5 ${h?.state === "testing" ? "animate-spin" : ""}`} />
                 </button>
@@ -888,6 +1018,19 @@ function ConnectionsPanel({
                 </button>
               </div>
             </div>
+
+            {editingRemote === remote.name && (
+              <EditRemoteCredentials
+                name={remote.name}
+                setNotice={setNotice}
+                onCancel={() => setEditingRemote(null)}
+                onSaved={() => {
+                  setEditingRemote(null);
+                  void refresh();
+                  void testOne(remote.name);
+                }}
+              />
+            )}
 
             <div className="mb-2.5 flex flex-wrap items-center gap-2 text-[11px]">
               {h?.state === "testing" && (
@@ -913,7 +1056,12 @@ function ConnectionsPanel({
               )}
             </div>
             {h?.state === "error" && h.message && (
-              <pre className="mono mb-2 max-h-20 overflow-auto whitespace-pre-wrap text-[10px] text-[var(--clay)]">{h.message}</pre>
+              <>
+                <pre className="mono mb-2 max-h-20 overflow-auto whitespace-pre-wrap text-[10px] text-[var(--clay)]">{h.message}</pre>
+                {remote.type === "protondrive" && protonAuthHelp(h.message) && (
+                  <p className="mb-2 text-[10.5px] leading-5 text-[var(--muted)]">{protonAuthHelp(h.message)}</p>
+                )}
+              </>
             )}
 
             <div className="border-t border-[var(--hairline-soft)] pt-2.5">

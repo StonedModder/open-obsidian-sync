@@ -159,11 +159,19 @@ export const runRclone = (
 // browser itself when no token is supplied, so we do NOT pass --non-interactive for those.
 const oauthBackends = new Set(["drive", "dropbox", "onedrive", "box", "pcloud", "yandex", "hidrive"]);
 
-export const buildCreateRemoteArgs = (name: string, type: string, options: Record<string, string> = {}, oauth?: boolean): string[] => {
+export const buildCreateRemoteArgs = (name: string, type: string, options: Record<string, string> = {}, oauth?: boolean, obscurePasswords?: boolean): string[] => {
   const kv = Object.entries(options).flatMap(([key, value]) => [`${key}=${value}`]);
   const args = ["config", "create", name, type, ...kv];
   const interactive = oauth ?? oauthBackends.has(type);
   if (!interactive) args.push("--non-interactive");
+  if (obscurePasswords) args.push("--obscure");
+  return args;
+};
+
+export const buildUpdateRemoteArgs = (name: string, options: Record<string, string>, obscurePasswords?: boolean): string[] => {
+  const kv = Object.entries(options).flatMap(([key, value]) => [`${key}=${value}`]);
+  const args = ["config", "update", name.replace(/:$/, ""), ...kv, "--non-interactive"];
+  if (obscurePasswords) args.push("--obscure");
   return args;
 };
 
@@ -202,11 +210,11 @@ export const buildDeleteRemoteArgs = (name: string): string[] => ["config", "del
 
 export const obscureArgs = (secret: string): string[] => ["obscure", secret];
 
-// crypt remote that wraps an existing `base:path`. Passwords must already be rclone-obscured.
+// crypt remote that wraps an existing `base:path`. Passwords are plain text; use --obscure on create.
 export const buildCryptArgs = (name: string, baseTarget: string, password: string, password2?: string): string[] => {
   const options: Record<string, string> = { remote: baseTarget, password };
   if (password2) options.password2 = password2;
-  return buildCreateRemoteArgs(name, "crypt", options);
+  return buildCreateRemoteArgs(name, "crypt", options, false, true);
 };
 
 // App settings live in dataDir as config.json + rclone/rclone.conf. Back both up to the remote so a

@@ -63,6 +63,19 @@ export interface CreateRemoteInput {
   oauth?: boolean;
 }
 
+export interface UpdateRemoteInput {
+  name: string;
+  options: Record<string, string>;
+  obscureKeys?: string[];
+}
+
+export interface RemoteEditInfo {
+  name: string;
+  type: string;
+  typeLabel: string;
+  publicOptions: Record<string, string>;
+}
+
 // One configurable option of an rclone backend, from `rclone config providers`.
 export interface ProviderOptionInfo {
   name: string;
