@@ -5,3 +5,9 @@ resources/rclone/
 *.log
 .env
 .DS_Store
+
+# Hermes / accidental Windows-path drops from remote editing
+C:\Users\nC:\home\n
+# Accidental Windows-path filenames from remote Hermes write_file
+C:Users/
+C:home/
