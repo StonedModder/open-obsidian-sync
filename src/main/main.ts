@@ -376,9 +376,7 @@ const syncVault = async (vaultId: string, options: { resync?: boolean }): Promis
     await ensureRemotePath(
       rclonePath,
       vault,
-      (line) => {
-        if (interestingRcloneLine(line)) log(line.includes("ERROR") ? "error" : "info", line, vault.id);
-      },
+      (line) => log("info", line, vault.id),
       rcloneConfigPath,
       rcloneEnv()
     );

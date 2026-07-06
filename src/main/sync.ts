@@ -79,6 +79,28 @@ export const buildMkdirArgs = (remote: string, folderSegment: string): string[] 
   return ["mkdir", target];
 };
 
+const PLACEHOLDER_NAME = ".open-obsidian-sync-placeholder";
+
+export const buildTouchPlaceholderArgs = (remote: string, remotePath: string): string[] => {
+  const remoteName = remote.replace(/:$/, "").trim();
+  const folder = normalizeRemotePath(remotePath);
+  const target = folder ? `${remoteName}:${folder}/${PLACEHOLDER_NAME}` : `${remoteName}:${PLACEHOLDER_NAME}`;
+  return ["touch", target];
+};
+
+export const buildLsdArgs = (remote: string, folderSegment: string): string[] => {
+  const remoteName = remote.replace(/:$/, "").trim();
+  const folder = normalizeRemotePath(folderSegment);
+  const target = folder ? `${remoteName}:${folder}` : `${remoteName}:`;
+  return ["lsd", target];
+};
+
+const mkdirAlreadyOk = (code: number, output: string): boolean => {
+  if (code === 0) return true;
+  const text = output.toLowerCase();
+  return /already exists|file exists|is a directory|not empty|nothing to do/.test(text);
+};
+
 export const ensureRemotePath = async (
   executable: string,
   vault: Pick<VaultConfig, "remote" | "remotePath">,
@@ -88,15 +110,49 @@ export const ensureRemotePath = async (
 ): Promise<void> => {
   const remote = vault.remote.replace(/:$/, "").trim();
   const segments = remotePathSegmentsToCreate(vault.remotePath);
+  const finalSegment = segments[segments.length - 1] ?? "";
+
+  if (!finalSegment) return;
+
+  onLine(`Ensuring remote folders exist on ${remote}: (${segments.join(" → ")})`);
 
   for (const segment of segments) {
-    const result = await runRclone(executable, buildMkdirArgs(remote, segment), onLine, configPath, env);
-    if (result.code !== 0) {
-      const lines = result.output.trim().split(String.fromCharCode(10));
-      const message = lines.slice(-4).join(String.fromCharCode(10)) || `rclone mkdir failed with code ${result.code}`;
-      throw new Error(message);
+    const args = buildMkdirArgs(remote, segment);
+    onLine(`rclone ${args.join(" ")}`);
+    const result = await runRclone(executable, args, onLine, configPath, env);
+    if (!mkdirAlreadyOk(result.code, result.output)) {
+      const lines = result.output.trim().split(/\r?\n/);
+      const message = lines.slice(-6).join("\n") || `rclone mkdir failed with code ${result.code}`;
+      throw new Error(`Could not create remote folder "${segment}": ${message}`);
     }
   }
+
+  const verify = await runRclone(executable, buildLsdArgs(remote, finalSegment), onLine, configPath, env);
+  if (verify.code !== 0) {
+    onLine("Remote path not visible yet; placing placeholder file…");
+    const touch = await runRclone(
+      executable,
+      buildTouchPlaceholderArgs(remote, finalSegment),
+      onLine,
+      configPath,
+      env
+    );
+    if (!mkdirAlreadyOk(touch.code, touch.output)) {
+      const lines = touch.output.trim().split(/\r?\n/);
+      const message = lines.slice(-6).join("\n") || `rclone touch failed with code ${touch.code}`;
+      throw new Error(
+        `Cloud folder "${remote}:${finalSegment}" is still missing after mkdir. Create it in your provider web UI or fix the remote path, then resync.\n${message}`
+      );
+    }
+    const verify2 = await runRclone(executable, buildLsdArgs(remote, finalSegment), onLine, configPath, env);
+    if (verify2.code !== 0) {
+      throw new Error(
+        `Cloud folder "${remote}:${finalSegment}" could not be verified. Check the remote path in vault settings (use open-obsidian-sync/your-vault) and resync.`
+      );
+    }
+  }
+
+  onLine(`Remote folder ready: ${remote}:${finalSegment}`);
 };
 export const filterLinesForVault = (
   vault: Pick<VaultConfig, "includeObsidianConfig" | "excludePatterns"> & Partial<Pick<VaultConfig, "selectiveSync">>
